@@ -386,6 +386,9 @@ public class CoreManager implements Listener {
                 UUID ownerUUID = UUID.fromString(coresConfig.getString(path + ".owner"));
 
                 TerritoryCore core = new TerritoryCore(coreId, loc, ownerUUID, level, fep, shield, allyId);
+                core.setMerged(coresConfig.getBoolean(path + ".is_merged", false));
+                core.setRaidCallCount(coresConfig.getInt(path + ".raid_call_count", 0));
+                core.setTotalRaidCount(coresConfig.getInt(path + ".total_raid_count", 0));
                 activeCores.put(getBlockAlignedLocation(loc), core);
 
                 int shards = coresConfig.getInt(path + ".shards", 0);
@@ -423,6 +426,9 @@ public class CoreManager implements Listener {
             coresConfig.set(path + ".shards", getShards(core.getCoreId()));
             coresConfig.set(path + ".peace_until", getPeaceUntil(core.getCoreId()));
             coresConfig.set(path + ".last_pve_raid", getLastRaidTime(core.getCoreId()));
+            coresConfig.set(path + ".is_merged", core.isMerged());
+            coresConfig.set(path + ".raid_call_count", core.getRaidCallCount());
+            coresConfig.set(path + ".total_raid_count", core.getTotalRaidCount());
 
             Block block = loc.getBlock();
             if (block.getType() == Material.CONDUIT) {

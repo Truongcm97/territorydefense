@@ -22,6 +22,10 @@ public class TerritoryCore {
     private double tempHealth;
     private boolean isRaidActive = false;
 
+    private boolean isMerged = false;
+    private int raidCallCount = 0;
+    private int totalRaidCount = 0;
+
     public TerritoryCore(UUID coreId, Location location, UUID ownerUUID, int level, double fep, double shield, String allyId) {
         this.coreId = coreId;
         this.location = location;
@@ -53,7 +57,7 @@ public class TerritoryCore {
      * Lấy sức chứa FEP tối đa (Capacity Cap) dựa trên cấp độ Lõi
      */
     public double getMaxFepCapacity() {
-        return switch (level) {
+        double capacity = switch (level) {
             case 1 -> 500.0;
             case 2 -> 1500.0;
             case 3 -> 4000.0;
@@ -61,13 +65,14 @@ public class TerritoryCore {
             case 5 -> 25000.0;
             default -> 500.0;
         };
+        return isMerged ? capacity * 1.10 : capacity;
     }
 
     /**
      * Lấy lớp giáp bảo vệ ảo tối đa dựa trên cấp độ Lõi
      */
     public double getMaxShieldCapacity() {
-        return switch (level) {
+        double cap = switch (level) {
             case 1 -> 1000.0;
             case 2 -> 2500.0;
             case 3 -> 5000.0;
@@ -75,6 +80,7 @@ public class TerritoryCore {
             case 5 -> 20000.0;
             default -> 1000.0;
         };
+        return isMerged ? cap * 1.10 : cap;
     }
 
     /**
@@ -168,5 +174,29 @@ public class TerritoryCore {
     public void revertHealth() {
         this.tempHealth = getMaxShieldCapacity();
         this.isRaidActive = false;
+    }
+
+    public boolean isMerged() {
+        return isMerged;
+    }
+
+    public void setMerged(boolean merged) {
+        this.isMerged = merged;
+    }
+
+    public int getRaidCallCount() {
+        return raidCallCount;
+    }
+
+    public void setRaidCallCount(int raidCallCount) {
+        this.raidCallCount = raidCallCount;
+    }
+
+    public int getTotalRaidCount() {
+        return totalRaidCount;
+    }
+
+    public void setTotalRaidCount(int totalRaidCount) {
+        this.totalRaidCount = totalRaidCount;
     }
 }

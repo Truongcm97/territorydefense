@@ -143,7 +143,18 @@ public class RaidSession implements Listener {
 
         // Hoàn nguyên máu Lõi về giá trị định mức theo RAM an toàn
         core.revertHealth();
+        
+        // Huỷ bỏ nhiệm vụ spawn dãn cách và dọn sạch quái còn sống
+        campaign.cleanup();
+        
         activeCampaigns.remove(core.getCoreId());
+
+        // Ghi nhận số lượng đợt raid phục vụ tính toán độ khó luỹ tiến 5%
+        core.setTotalRaidCount(core.getTotalRaidCount() + 1);
+        if (campaign.isPurchased) {
+            core.setRaidCallCount(core.getRaidCallCount() + 1);
+        }
+        plugin.getCoreManager().saveAllCores();
 
         if (success) {
             broadcastToAlliance(core, ChatColor.GREEN + "Chúc mừng! Các chiến binh đã đẩy lùi hoàn toàn đợt Raid thành công.");
@@ -205,6 +216,24 @@ public class RaidSession implements Listener {
         // Flag để đánh dấu spawn queue đã hoàn tất (tránh race condition với spawnTask.cancel())
         private volatile boolean spawnCompleted = false;
 
+        public void cleanup() {
+            if (spawnTask != null) {
+                try {
+                    spawnTask.cancel();
+                } catch (Exception ignored) {}
+                spawnTask = null;
+            }
+            pendingSpawnQueue.clear();
+            synchronized (aliveMobs) {
+                for (Entity mob : aliveMobs) {
+                    if (mob.isValid()) {
+                        mob.remove();
+                    }
+                }
+                aliveMobs.clear();
+            }
+        }
+
         public ActiveRaidCampaign(TerritoryCore core, boolean isPurchased, int purchasedIndex) {
             this.core = core;
             this.isPurchased = isPurchased;
@@ -235,6 +264,29 @@ public class RaidSession implements Listener {
 
                     // Ép quái di chuyển công phá Lõi
                     mob.getPathfinder().moveTo(coreLoc, 1.25D);
+
+                    // AI phá vật cản: Tìm khối block cản đường phía trước hoặc dọc đường đi đến Lõi
+                    org.bukkit.util.Vector direction = coreLoc.toVector().subtract(mobLoc.toVector()).normalize();
+                    // Kiểm tra block ở tầm mắt hoặc chân
+                    for (double d = 0.5; d <= 1.5; d += 0.5) {
+                        Location checkLoc = mobLoc.clone().add(direction.clone().multiply(d));
+                        org.bukkit.block.Block block = checkLoc.getBlock();
+                        if (block.getType().isSolid() && block.getType() != Material.CONDUIT && block.getType() != Material.BEDROCK) {
+                            // Tích lũy sát thương phá block
+                            int breakTicks = mob.getMetadata("td_break_ticks").stream().findFirst().map(m -> m.asInt()).orElse(0);
+                            if (breakTicks >= 3) {
+                                block.getWorld().spawnParticle(org.bukkit.Particle.BLOCK, block.getLocation().add(0.5, 0.5, 0.5), 15, block.getBlockData());
+                                block.getWorld().playSound(block.getLocation(), Sound.ENTITY_ZOMBIE_BREAK_WOODEN_DOOR, 1.0f, 1.0f);
+                                block.setType(Material.AIR);
+                                mob.setMetadata("td_break_ticks", new org.bukkit.metadata.FixedMetadataValue(plugin, 0));
+                            } else {
+                                block.getWorld().spawnParticle(org.bukkit.Particle.CRIT, block.getLocation().add(0.5, 0.5, 0.5), 5);
+                                block.getWorld().playSound(block.getLocation(), Sound.ENTITY_ZOMBIE_ATTACK_WOODEN_DOOR, 0.5f, 1.2f);
+                                mob.setMetadata("td_break_ticks", new org.bukkit.metadata.FixedMetadataValue(plugin, breakTicks + 1));
+                            }
+                            break;
+                        }
+                    }
 
                     // Khoảng cách tới Lõi
                     double distance = mobLoc.distance(coreLoc);
@@ -309,7 +361,10 @@ public class RaidSession implements Listener {
             if (isPurchased) {
                 dynamicMult = plugin.getConfig().getDouble("raid-settings.dynamic-multiplier." + purchasedIndex, 1.2);
             }
-            double finalHpMultiplier = staticMult * dynamicMult;
+            // Sức mạnh quái tăng 20% mỗi lần call, và quái mạnh thêm 5% cho mỗi trận PvE Raid đã diễn ra
+            double callScaling = Math.pow(1.20, core.getRaidCallCount());
+            double totalRaidScaling = Math.pow(1.05, core.getTotalRaidCount());
+            double finalHpMultiplier = staticMult * dynamicMult * callScaling * totalRaidScaling;
 
             double radius = core.getRadius();
             Location cLoc = core.getLocation();
@@ -414,6 +469,7 @@ public class RaidSession implements Listener {
             mob.getPersistentDataContainer().set(PDCKeys.RAID_MOB_TAG, PersistentDataType.BYTE, (byte) 1);
             mob.getPersistentDataContainer().set(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING, core.getCoreId().toString());
             mob.setMetadata("td_owner_core", new FixedMetadataValue(plugin, core.getCoreId().toString()));
+            mob.setMetadata("td_raid_call_count", new FixedMetadataValue(plugin, core.getRaidCallCount()));
 
             // Stamp mã băm bảo mật PDC chống gian lận
             plugin.getSecureEntityTracker().stampSecureHash(mob, "RAID_MOB");

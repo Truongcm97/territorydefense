@@ -102,19 +102,25 @@ public class CombatDamageTracker implements Listener {
 
             // KIỂM SOÁT NGHIÊM NGẶT AN TI-AFK: Chỉ trao thưởng Shard khi đóng góp sát thương ≥ 30%
             if (contributionPercent >= 30.0) {
+                // Lấy số lần call raid để scale drop +10% mỗi lần
+                int callCount = event.getEntity().getMetadata("td_raid_call_count").stream().findFirst().map(m -> m.asInt()).orElse(0);
+                double dropScale = Math.pow(1.10, callCount);
+
                 // 1. Phân phát mảnh vỡ Shard độc bản có gắn thẻ PDC chống nhân bản lậu
-                int shardAmount = (event.getEntity().getType() == org.bukkit.entity.EntityType.GIANT) ? 15 : 1;
+                int baseShard = (event.getEntity().getType() == org.bukkit.entity.EntityType.GIANT) ? 15 : 1;
+                int shardAmount = (int) Math.max(1.0, Math.round(baseShard * dropScale));
                 ItemStack secureShard = createSecureShard(shardAmount);
                 player.getInventory().addItem(secureShard);
 
                 // 2. Trao thưởng tiền xu trực tiếp qua ví Vault Kinh tế
                 double baseCoin = getCoinRewardForType(event.getEntity().getType());
-                VaultHook.deposit(player, baseCoin);
+                double coinAmount = Math.round(baseCoin * dropScale);
+                VaultHook.deposit(player, coinAmount);
 
                 player.sendMessage(ChatColor.GREEN + "[Chiến công] Đạt yêu cầu đóng góp phòng thủ: " +
-                        ChatColor.YELLOW + String.format("%.1f", contributionPercent) + "%");
+                        ChatColor.YELLOW + String.format("%.1f", contributionPercent) + "% (Drops x" + String.format("%.2f", dropScale) + ")");
                 player.sendMessage(ChatColor.GREEN + " Bạn được nhận: " + ChatColor.AQUA + shardAmount +
-                        " Shards" + ChatColor.GREEN + " & " + ChatColor.GOLD + baseCoin + " Xu.");
+                        " Shards" + ChatColor.GREEN + " & " + ChatColor.GOLD + coinAmount + " Xu.");
 
                 player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
             } else {

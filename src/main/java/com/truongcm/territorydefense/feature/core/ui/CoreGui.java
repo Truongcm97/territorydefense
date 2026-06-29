@@ -245,6 +245,19 @@ public class CoreGui extends CustomHolder {
         }
         inv.setItem(13, upgradeButton);
 
+        ItemStack mergeButton = createGuiItem(
+                core.isMerged() ? Material.BEACON : Material.MAP,
+                core.isMerged() ? ChatColor.GOLD + "" + ChatColor.BOLD + "Trạng thái: Đã Gộp Lãnh Địa (+10%)" : ChatColor.GREEN + "" + ChatColor.BOLD + "Gộp Lãnh Địa Liên Minh",
+                "LAND_MERGE",
+                ChatColor.GRAY + "Gộp ranh giới đất với đồng minh ở gần.",
+                ChatColor.YELLOW + "Hiệu quả gộp đất:",
+                ChatColor.AQUA + " - Tăng 10% Giáp ảo tối đa",
+                ChatColor.AQUA + " - Tăng 10% Sức chứa FEP",
+                " ",
+                core.isMerged() ? ChatColor.GREEN + "✔ Đang hoạt động và nhận bùa lợi!" : ChatColor.YELLOW + "➔ Click để quét và kích hoạt gộp lãnh địa!"
+        );
+        inv.setItem(15, mergeButton);
+
         ItemStack retrieveButton = createGuiItem(Material.REDSTONE_BLOCK, ChatColor.RED + "" + ChatColor.BOLD + "Thu Hồi & Di Dời Lõi Lãnh Thổ", "RETRIEVE_CORE",
                 ChatColor.GRAY + "Thu hồi Lõi về dạng vật phẩm gốc.",
                 ChatColor.GRAY + "Toàn bộ tháp canh và Farmer liên quan sẽ được đóng gói.",
@@ -330,6 +343,47 @@ public class CoreGui extends CustomHolder {
 
             if (action.equalsIgnoreCase("UPGRADE_CORE")) {
                 handleUpgradeCore(player);
+                return;
+            }
+
+            if (action.equalsIgnoreCase("LAND_MERGE")) {
+                if (core.isMerged()) {
+                    core.setMerged(false);
+                    plugin.getCoreManager().saveAllCores();
+                    player.sendMessage(ChatColor.YELLOW + "[Gộp Đất] Đã hủy trạng thái gộp ranh giới. Bùa lợi 10% đã bị gỡ bỏ.");
+                    player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_ANVIL_BREAK, 1.0f, 1.0f);
+                } else {
+                    String playerAlly = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId()) : null;
+                    if (playerAlly == null) {
+                        player.sendMessage(ChatColor.RED + "[Gộp Đất] Bạn cần gia nhập một Liên minh trước khi thực hiện gộp lãnh địa!");
+                        player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                        return;
+                    }
+                    // Quét các lõi cùng liên minh ở gần
+                    boolean foundAllyCore = false;
+                    for (TerritoryCore other : plugin.getCoreManager().getAllActiveCores()) {
+                        if (other.getCoreId().equals(core.getCoreId())) continue;
+                        String otherAlly = other.getAllyId();
+                        if (otherAlly != null && otherAlly.equalsIgnoreCase(playerAlly)) {
+                            double distance = core.getLocation().distance(other.getLocation());
+                            double maxDistance = (core.getRadius() + other.getRadius()) * 2.0;
+                            if (distance <= maxDistance) {
+                                foundAllyCore = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (foundAllyCore) {
+                        core.setMerged(true);
+                        plugin.getCoreManager().saveAllCores();
+                        player.sendMessage(ChatColor.GREEN + "[Gộp Đất] Gộp lãnh địa thành công! Bạn nhận được bùa lợi +10% Giáp và Sức chứa FEP.");
+                        player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
+                    } else {
+                        player.sendMessage(ChatColor.RED + "[Gộp Đất] Không tìm thấy Lõi Lãnh thổ nào của đồng minh trong phạm vi liên kết!");
+                        player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                    }
+                }
+                player.openInventory(new CoreGui(plugin, core, CoreTab.FINANCE).getInventory());
                 return;
             }
 
@@ -431,7 +485,9 @@ public class CoreGui extends CustomHolder {
     }
 
     private void handleBuyRaid(Player player) {
-        double cost = plugin.getConfig().getDouble("raid-settings.purchase-costs.1", 100000.0);
+        double baseCost = plugin.getConfig().getDouble("raid-settings.purchase-costs.1", 100000.0);
+        int callCount = core.getRaidCallCount();
+        double cost = baseCost * Math.pow(1.30, callCount);
 
         if (!plugin.getVaultEconomy().has(player, cost)) {
             player.sendMessage(ChatColor.RED + "[Raid] Bạn không đủ Xu để mua đợt quái công thành! Cần: " + String.format("%,.0f", cost) + " Xu.");
@@ -453,13 +509,13 @@ public class CoreGui extends CustomHolder {
 
         boolean activated = false;
         if (plugin.getRaidSession() != null) {
-            plugin.getRaidSession().startRaid(core, true, 1);
+            plugin.getRaidSession().startRaid(core, true, callCount + 1);
             activated = true;
         }
 
         if (activated) {
             plugin.getVaultEconomy().withdrawPlayer(player, cost);
-            player.sendMessage(ChatColor.GREEN + "[Raid] Đã nạp " + String.format("%,.0f", cost) + " Xu! Cổng không gian rạn nứt, quái Raid đang kéo đến...");
+            player.sendMessage(ChatColor.GREEN + "[Raid] Đã nạp " + String.format("%,.0f", cost) + " Xu (Lần gọi thứ " + (callCount + 1) + ")! Cổng không gian rạn nứt, quái Raid đang kéo đến...");
             player.playSound(player.getLocation(), org.bukkit.Sound.EVENT_RAID_HORN, 1.0f, 0.8f);
             player.closeInventory();
         } else {
