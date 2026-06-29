@@ -1,0 +1,70 @@
+# ==============================================================================
+#          CẤU HÌNH SIÊU DỮ LIỆU: TERRITORY DEFENSE (MASTER GDD FINAL V30)
+#           Đã tối ưu hóa cấu trúc tải và phân quyền cho Paper (1.20+)
+# ==============================================================================
+
+name: TerritoryDefense
+version: '1.0'
+main: com.truongcm.territorydefense.TerritoryDefense
+api-version: '1.20'
+description: Plugin phòng thủ lãnh thổ, chiến tranh liên minh và tự động hóa logistics nông nghiệp.
+author: truongcm
+contributors: [truongcm_dev]
+website: https://kikibel.online/territory-defense
+
+# POSTWORLD giúp thế giới tạo xong hoàn toàn mới nạp dữ liệu Lõi (Core), tránh lỗi Null Lãnh thổ
+load: POSTWORLD
+
+# Khai báo các thư viện bắt buộc (Chuyển sang cấu trúc chuẩn để tối ưu hóa bộ Parse)
+depend:
+  - Vault
+
+# Khai báo các thư viện phụ thuộc mềm
+softdepend:
+  - ProtocolLib
+  - PlayerVaults
+  - ServerChest
+
+# ------------------------------------------------------------------------------
+# ĐĂNG KÝ HỆ THỐNG LỆNH ĐIỀU HÀNH (COMMANDS)
+# ------------------------------------------------------------------------------
+commands:
+  territory:
+    description: "Lệnh quản trị chính cho lãnh thổ."
+    aliases:
+      - t
+      - core
+      - lanhtho
+    permission: territorydefense.use
+    usage: "/territory [boundary|accepttax|migrate|getstarter|help]"
+  ally:
+    description: "Quản trị liên minh và các tính năng tương tác PvP."
+    aliases:
+      - a
+      - alliance
+      - lienminh
+    permission: territorydefense.use
+    usage: "/ally [create|invite|kick|chat|chest|declare|leave|disband|help]"
+
+# ------------------------------------------------------------------------------
+# PHÂN QUYỀN HỆ THỐNG (PERMISSIONS)
+# ------------------------------------------------------------------------------
+permissions:
+  territorydefense.*:
+    description: "Quyền truy cập toàn bộ tính năng Territory Defense."
+    children:
+      territorydefense.use: true
+      territorydefense.admin: true
+      territorydefense.bypass: true
+
+  territorydefense.use:
+    description: "Cho phép sử dụng các lệnh cơ bản."
+    default: true
+
+  territorydefense.admin:
+    description: "Quyền quản trị, phá hủy lõi, reset quyền lợi."
+    default: op
+
+  territorydefense.bypass:
+    description: "Bỏ qua các giới hạn đóng thuế hoặc thời gian chờ."
+    default: op
