@@ -75,6 +75,7 @@ public class CoreGui extends CustomHolder {
     }
 
     private void renderLogisticsTab(Inventory inv) {
+        // Hàng 1 - Trung tâm (slot 13): Thông tin FEP
         ItemStack fepGauge = new ItemStack(Material.WHEAT);
         ItemMeta fepMeta = fepGauge.getItemMeta();
         if (fepMeta != null) {
@@ -88,22 +89,26 @@ public class CoreGui extends CustomHolder {
         }
         inv.setItem(13, fepGauge);
 
+        // Hàng 2 - Trái (slot 20): Thuê Farmer | Phải (slot 24): Quản lý Farmer
         double hireCost = plugin.getConfig().getDouble("farmer-settings.hire-costs.1", 10000.0);
-        inv.setItem(22, createGuiItem(Material.VILLAGER_SPAWN_EGG, ChatColor.GREEN + "Thuê Nông Dân NPC (Farmer)", "HIRE_FARMER",
-                ChatColor.GRAY + "Giá thuê: " + ChatColor.GOLD + hireCost + " Xu",
-                ChatColor.GRAY + " Farmer sẽ tự động làm ruộng & chăn nuôi nạp FEP."
+        inv.setItem(20, createGuiItem(Material.VILLAGER_SPAWN_EGG, ChatColor.GREEN + "Thuê Nông Dân NPC (Farmer)", "HIRE_FARMER",
+                ChatColor.GRAY + "Giá thuê: " + ChatColor.GOLD + String.format("%,.0f", hireCost) + " Xu",
+                ChatColor.GRAY + "Farmer sẽ tự động làm ruộng & chăn nuôi nạp FEP."
         ));
-
-        ItemStack depositHelper = createGuiItem(Material.LIGHT_BLUE_STAINED_GLASS_PANE, ChatColor.AQUA + "Khu tiếp tế: Thả thức ăn vào đây để nạp FEP", "DEPOSIT_ZONE",
-                ChatColor.GRAY + "Cầm nông sản/thức ăn trên tay,",
-                ChatColor.GRAY + "sau đó click chuột trái vào đây để nạp FEP!"
-        );
-        inv.setItem(31, depositHelper);
 
         inv.setItem(24, createGuiItem(Material.LEATHER_HELMET, ChatColor.YELLOW + "" + ChatColor.BOLD + "Quản Lý Nông Dân", "OPEN_FARMER_LIST",
                 ChatColor.GRAY + "Xem danh sách và nâng cấp toàn bộ",
                 ChatColor.GRAY + "Nông dân NPC hiện có của Lõi lãnh thổ."
         ));
+
+        // Hàng 3 - Trung tâm (slot 31): Khu tiếp tế FEP
+        ItemStack depositHelper = createGuiItem(Material.LIGHT_BLUE_STAINED_GLASS_PANE,
+                ChatColor.AQUA + "" + ChatColor.BOLD + "Khu Tiếp Tế FEP", "DEPOSIT_ZONE",
+                ChatColor.GRAY + "Cầm nông sản/thức ăn trên tay,",
+                ChatColor.GRAY + "sau đó CLICK TRÁI vào đây để nạp FEP!",
+                ChatColor.YELLOW + "Vật phẩm chấp nhận: Thực phẩm chín, ngũ cốc..."
+        );
+        inv.setItem(31, depositHelper);
     }
 
     private void renderCombatTab(Inventory inv) {
@@ -120,12 +125,39 @@ public class CoreGui extends CustomHolder {
         }
         inv.setItem(13, shieldInfo);
 
+        // Tính giá Raid thực tế (sau reset 24h nếu cần)
+        core.checkRaidCallReset();
+        double baseCost = plugin.getConfig().getDouble("raid-settings.purchase-costs.1", 200000.0);
+        int callCount = core.getRaidCallCount();
+        double actualRaidCost = baseCost * Math.pow(1.30, callCount);
+
+        // Tính thời gian reset 24h còn lại
+        long lastCallTime = core.getLastRaidCallTime();
+        String resetInfo;
+        if (lastCallTime <= 0L || callCount == 0) {
+            resetInfo = ChatColor.GREEN + "Reset: Chưa gọi lần nào (Giá gốc)";
+        } else {
+            long elapsed = System.currentTimeMillis() - lastCallTime;
+            long resetIn = 24L * 60L * 60L * 1000L - elapsed;
+            if (resetIn <= 0) {
+                resetInfo = ChatColor.GREEN + "Reset: Sẵn sàng reset về giá gốc khi mua!";
+            } else {
+                long hoursLeft = resetIn / (60 * 60 * 1000L);
+                long minsLeft = (resetIn % (60 * 60 * 1000L)) / (60 * 1000L);
+                resetInfo = ChatColor.YELLOW + "Reset về giá gốc sau: " + hoursLeft + "h " + minsLeft + "m";
+            }
+        }
+
         inv.setItem(11, createGuiItem(Material.REDSTONE_TORCH, ChatColor.RED + "" + ChatColor.BOLD + "Kích Hoạt Raid Chủ Động", "BUY_RAID",
-                ChatColor.GRAY + "Chi phí kích hoạt: " + ChatColor.GOLD + "200,000 Xu",
+                ChatColor.GRAY + "Chi phí lần này: " + ChatColor.GOLD + String.format("%,.0f", actualRaidCost) + " Xu",
+                ChatColor.GRAY + "Số lần đã gọi: " + ChatColor.AQUA + callCount + " lần",
+                ChatColor.GRAY + "Mỗi lần gọi: Giá +30%, Quái mạnh +20%, Drop +10%",
+                resetInfo,
                 ChatColor.GRAY + "Triệu hồi cổng không gian quái Raid xâm lược.",
                 ChatColor.AQUA + "Mục đích: Farm quái lấy Shards nâng cấp Lõi cực nhanh!",
                 ChatColor.RED + "Lưu ý: Không thể mua khi Khiên Hòa Bình đang kích hoạt!"
         ));
+
 
         long currentPeaceRemaining = Math.max(0L, plugin.getCoreManager().getPeaceUntil(core.getCoreId()) - System.currentTimeMillis());
         long remainingMins = currentPeaceRemaining / (60 * 1000L);
@@ -227,6 +259,7 @@ public class CoreGui extends CustomHolder {
         int nextLevel = core.getLevel() + 1;
         boolean maxed = core.getLevel() >= 5;
 
+        // Slot 13 - Trung tâm trên: Nâng cấp Lõi
         ItemStack upgradeButton;
         if (maxed) {
             upgradeButton = createGuiItem(Material.NETHER_STAR, ChatColor.GOLD + "Lõi Đạt Cấp Cực Đại (Cấp 5)", "NONE",
@@ -240,11 +273,12 @@ public class CoreGui extends CustomHolder {
                     ChatColor.GRAY + "Nâng lên cấp độ: " + ChatColor.YELLOW + nextLevel,
                     ChatColor.GRAY + "Chi phí Xu: " + ChatColor.GOLD + String.format("%,.0f", moneyCost) + " Xu",
                     ChatColor.GRAY + "Chi phí Shards: " + ChatColor.AQUA + shardCost + " Shards",
-                    ChatColor.GRAY + " Nâng cấp để mở rộng ranh giới và giới hạn tháp canh."
+                    ChatColor.GRAY + "Nâng cấp để mở rộng ranh giới và giới hạn tháp canh."
             );
         }
         inv.setItem(13, upgradeButton);
 
+        // Slot 20 - Trái giữa: Gộp Lãnh Địa
         ItemStack mergeButton = createGuiItem(
                 core.isMerged() ? Material.BEACON : Material.MAP,
                 core.isMerged() ? ChatColor.GOLD + "" + ChatColor.BOLD + "Trạng thái: Đã Gộp Lãnh Địa (+10%)" : ChatColor.GREEN + "" + ChatColor.BOLD + "Gộp Lãnh Địa Liên Minh",
@@ -256,16 +290,9 @@ public class CoreGui extends CustomHolder {
                 " ",
                 core.isMerged() ? ChatColor.GREEN + "✔ Đang hoạt động và nhận bùa lợi!" : ChatColor.YELLOW + "➔ Click để quét và kích hoạt gộp lãnh địa!"
         );
-        inv.setItem(15, mergeButton);
+        inv.setItem(20, mergeButton);
 
-        ItemStack retrieveButton = createGuiItem(Material.REDSTONE_BLOCK, ChatColor.RED + "" + ChatColor.BOLD + "Thu Hồi & Di Dời Lõi Lãnh Thổ", "RETRIEVE_CORE",
-                ChatColor.GRAY + "Thu hồi Lõi về dạng vật phẩm gốc.",
-                ChatColor.GRAY + "Toàn bộ tháp canh và Farmer liên quan sẽ được đóng gói.",
-                ChatColor.YELLOW + "Yêu cầu: Hòm đồ phải có ít nhất 1 ô trống.",
-                ChatColor.RED + "Lưu ý: Chỉ chủ sở hữu mới có quyền thu hồi!"
-        );
-        inv.setItem(31, retrieveButton);
-
+        // Slot 24 - Phải giữa: Rút Shard
         int currentShards = plugin.getCoreManager().getShards(core.getCoreId());
         ItemStack withdrawShardsButton = createGuiItem(Material.PRISMARINE_SHARD, ChatColor.AQUA + "" + ChatColor.BOLD + "Rút Shard Tích Lũy", "WITHDRAW_SHARDS",
                 ChatColor.GRAY + "Số lượng tích lũy hiện tại: " + ChatColor.GREEN + currentShards + " Shards",
@@ -274,7 +301,16 @@ public class CoreGui extends CustomHolder {
                 ChatColor.RED + "Lưu ý: Chỉ chủ sở hữu mới có quyền rút Shard!",
                 ChatColor.RED + "Không thể rút khi đang trong trạng thái Chiến Sự/Raid!"
         );
-        inv.setItem(33, withdrawShardsButton);
+        inv.setItem(24, withdrawShardsButton);
+
+        // Slot 31 - Trung tâm dưới: Thu Hồi Lõi (tách biệt vì nguy hiểm)
+        ItemStack retrieveButton = createGuiItem(Material.REDSTONE_BLOCK, ChatColor.RED + "" + ChatColor.BOLD + "Thu Hồi & Di Dời Lõi Lãnh Thổ", "RETRIEVE_CORE",
+                ChatColor.GRAY + "Thu hồi Lõi về dạng vật phẩm gốc.",
+                ChatColor.GRAY + "Toàn bộ tháp canh và Farmer liên quan sẽ được đóng gói.",
+                ChatColor.YELLOW + "Yêu cầu: Hòm đồ phải có ít nhất 1 ô trống.",
+                ChatColor.RED + "Lưu ý: Chỉ chủ sở hữu mới có quyền thu hồi!"
+        );
+        inv.setItem(31, retrieveButton);
     }
 
     @Override

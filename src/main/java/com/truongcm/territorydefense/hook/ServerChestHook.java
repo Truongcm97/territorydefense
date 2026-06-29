@@ -52,37 +52,18 @@ public final class ServerChestHook {
             return;
         }
 
-        TerritoryDefense plugin = TerritoryDefense.getInstance();
+        // Kích hoạt Kho ảo Native bảo mật cao tích hợp sẵn
+        // (Không dùng plugin ngoài vì có thể gây thông báo lỗi "không có đồng minh")
+        Inventory gui = nativeGuildChests.computeIfAbsent(allianceId, k ->
+                Bukkit.createInventory(null, 54, ChatColor.DARK_BLUE + "Rương Liên Minh - " + allianceName)
+        );
 
-        // 1. Kiểm tra xem plugin ServerChest ngoài có đang hoạt động không
-        if (Bukkit.getPluginManager().getPlugin("ServerChest") != null ||
-                Bukkit.getPluginManager().getPlugin("PlayerVaults") != null) {
-
-            logChestAction(player.getName(), allianceName, "MỞ KHO NGOÀI", "N/A", 0, "SUCCESS");
-            try {
-                // Đóng vai trò thực thi lệnh mở hòm đồ của plugin ServerChest/PlayerVaults
-                boolean checkCmd = player.performCommand("chest " + allianceName);
-                if (checkCmd) {
-                    player.playSound(player.getLocation(), Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
-                    return;
-                }
-            } catch (Exception ignored) {}
-            // Fallback sang native chest nếu lệnh ngoài thất bại hoặc không được thực thi thành công
-        }
-
-        // 2. Kích hoạt Kho ảo Native bảo mật cao tích hợp sẵn
-        {
-            // 2. Kích hoạt Kho ảo Native bảo mật cao tích hợp sẵn
-            Inventory gui = nativeGuildChests.computeIfAbsent(allianceId, k ->
-                    Bukkit.createInventory(null, 54, ChatColor.DARK_BLUE + "Rương Liên Minh - " + allianceName)
-            );
-
-            activeChestSessions.put(player.getUniqueId(), allianceId);
-            player.openInventory(gui);
-            player.playSound(player.getLocation(), Sound.BLOCK_CHEST_OPEN, 0.8f, 1.2f);
-            logChestAction(player.getName(), allianceName, "MỞ KHO NATIVE", "NONE", 0, "SUCCESS");
-        }
+        activeChestSessions.put(player.getUniqueId(), allianceId);
+        player.openInventory(gui);
+        player.playSound(player.getLocation(), Sound.BLOCK_CHEST_OPEN, 0.8f, 1.2f);
+        logChestAction(player.getName(), allianceName, "MỞ KHO NATIVE", "NONE", 0, "SUCCESS");
     }
+
 
     /**
      * Khởi chạy trình lắng nghe sự kiện của Kho ảo Native để kiểm soát an ninh.
