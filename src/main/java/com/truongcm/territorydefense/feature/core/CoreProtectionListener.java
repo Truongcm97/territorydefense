@@ -325,12 +325,20 @@ public class CoreProtectionListener implements Listener {
         Entity victim = event.getEntity();
         Entity damager = event.getDamager();
 
+        // Bỏ qua quái Raid PvE — chúng có thể mang tag td_owner_core nhưng phải cho phép người chơi tấn công
+        if (victim.hasMetadata("td_raid_mob")
+                || victim.hasMetadata("td_raid")
+                || victim.getPersistentDataContainer().has(PDCKeys.RAID_MOB_TAG, PersistentDataType.BYTE)) {
+            return;
+        }
+
         PersistentDataContainer pdc = victim.getPersistentDataContainer();
         boolean isNpc = pdc.has(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING)
                 || victim.hasMetadata("td_farmer")
                 || victim.hasMetadata("td_npc");
 
         if (!isNpc) return;
+
 
         TerritoryCore npcCore = null;
         if (pdc.has(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING)) {

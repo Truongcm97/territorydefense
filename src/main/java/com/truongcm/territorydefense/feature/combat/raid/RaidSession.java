@@ -468,6 +468,7 @@ public class RaidSession implements Listener {
             // Đóng cờ Metadata để hệ thống dễ quản lý và chống hack
             mob.getPersistentDataContainer().set(PDCKeys.RAID_MOB_TAG, PersistentDataType.BYTE, (byte) 1);
             mob.getPersistentDataContainer().set(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING, core.getCoreId().toString());
+            mob.setMetadata("td_raid_mob", new FixedMetadataValue(plugin, true));   // <-- để nhận dạng khi bảo vệ NPC
             mob.setMetadata("td_owner_core", new FixedMetadataValue(plugin, core.getCoreId().toString()));
             mob.setMetadata("td_raid_call_count", new FixedMetadataValue(plugin, core.getRaidCallCount()));
 
