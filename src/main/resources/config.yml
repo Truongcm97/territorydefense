@@ -25,28 +25,28 @@ core-settings:
       max-shield: 2500.0
       max-fep: 1500.0
       max-towers: 7
-      upgrade-cost-money: 100000.0
+      upgrade-cost-money: 200000.0
       upgrade-cost-shards: 5
     3:
       radius: 70
       max-shield: 5000.0
       max-fep: 4000.0
       max-towers: 12
-      upgrade-cost-money: 500000.0
+      upgrade-cost-money: 1000000.0
       upgrade-cost-shards: 15
     4:
       radius: 90
       max-shield: 10000.0
       max-fep: 10000.0
       max-towers: 17
-      upgrade-cost-money: 2000000.0
+      upgrade-cost-money: 4000000.0
       upgrade-cost-shards: 40
     5:
       radius: 110
       max-shield: 20000.0
       max-fep: 25000.0
       max-towers: 22
-      upgrade-cost-money: 5000000.0
+      upgrade-cost-money: 10000000.0
       upgrade-cost-shards: 100
 
 # ------------------------------------------------------------------------------
@@ -83,11 +83,11 @@ farmer-settings:
     5: 6
 
   hire-costs:
-    1: 10000.0
-    2: 25000.0
-    3: 50000.0
-    4: 100000.0
-    5: 250000.0
+    1: 20000.0
+    2: 50000.0
+    3: 100000.0
+    4: 200000.0
+    5: 500000.0
 
   # Ma trận nâng cấp Farmer (Điều chỉnh scan-frequency để bảo vệ TPS server)
   levels:
@@ -104,28 +104,28 @@ farmer-settings:
       capacity: 128
       fep-multiplier: 1.1
       scan-frequency-ticks: 100
-      upgrade-cost: 50000.0
+      upgrade-cost: 100000.0
     3:
       speed: 0.30
       scan-radius: 25
       capacity: 256
       fep-multiplier: 1.2
       scan-frequency-ticks: 80  # 4 giây quét 1 lần
-      upgrade-cost: 150000.0
+      upgrade-cost: 300000.0
     4:
       speed: 0.35
       scan-radius: 30
       capacity: 384
       fep-multiplier: 1.35
       scan-frequency-ticks: 80
-      upgrade-cost: 400000.0
+      upgrade-cost: 800000.0
     5:
       speed: 0.40
       scan-radius: 35           # Giảm từ 64 xuống 35 để thu hẹp vùng tìm kiếm thực thể gây lag
       capacity: 512
       fep-multiplier: 1.5
       scan-frequency-ticks: 60  # Đặt tối thiểu 3 giây để tránh nghẽn luồng xử lý chính (Main Thread)
-      upgrade-cost: 1000000.0
+      upgrade-cost: 2000000.0
 
   # Giới hạn thực thể gia súc trong vùng đất để bảo vệ thực thể Paper
   max-pasture-animals: 20
@@ -137,7 +137,7 @@ tower-settings:
   fep-cost-per-shot: 2.0
 
   upgrade-costs:
-    level-2: { money: 20000.0, shards: 0 }
+    level-2: { money: 40000.0, shards: 0 }
     level-3: { money: 0.0, shards: 10 }
     level-4: { money: 0.0, shards: 25 }
     level-5: { money: 0.0, shards: 45 }
@@ -215,7 +215,7 @@ mercenary-settings:
   types:
     melee:
       display-name: "&6Lính Cận Chiến (Iron Golem)"
-      hire-cost: 50000.0
+      hire-cost: 100000.0
       base-hp: 500.0
       base-damage: 25.0
       special:
@@ -223,7 +223,7 @@ mercenary-settings:
         stun-duration-ticks: 10
     archer:
       display-name: "&aLính Cung Thủ (Skeleton)"
-      hire-cost: 45000.0
+      hire-cost: 90000.0
       base-hp: 250.0
       base-damage: 30.0
       special:
@@ -231,14 +231,14 @@ mercenary-settings:
         burn-duration-ticks: 60
     siege:
       display-name: "&cKỵ Binh Phá Thành (Ravager)"
-      hire-cost: 120000.0
+      hire-cost: 240000.0
       base-hp: 1200.0
       base-damage: 40.0
       special:
         structure-damage-multiplier: 3.0
     support:
       display-name: "&bLính Hỗ Trợ (Allay)"
-      hire-cost: 60000.0
+      hire-cost: 120000.0
       base-hp: 300.0
       base-damage: 0.0
       special:
@@ -267,9 +267,9 @@ raid-settings:
     3: 1.50
 
   purchase-costs:
-    1: 500000.0
-    2: 1000000.0
-    3: 2500000.0
+    1: 200000.0
+    2: 500000.0
+    3: 1000000.0
 
   skip-costs:
     1: 200000.0

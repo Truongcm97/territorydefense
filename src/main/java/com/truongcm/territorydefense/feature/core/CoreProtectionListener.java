@@ -387,7 +387,7 @@ public class CoreProtectionListener implements Listener {
 
         if (!isRaidMob) return;
 
-        // 1. Chặn người chơi tấn công trực tiếp hoặc bằng cung tên
+        // 1. Cho phép người chơi tấn công trực tiếp hoặc bằng cung tên (không cancel event cho Player)
         Player playerAttacker = null;
         if (damager instanceof Player p) {
             playerAttacker = p;
@@ -396,9 +396,7 @@ public class CoreProtectionListener implements Listener {
         }
 
         if (playerAttacker != null) {
-            event.setCancelled(true);
-            playerAttacker.sendMessage(ChatColor.RED + "[Raid PvE] Bạn không thể gây sát thương lên Quái Công Thành!");
-            playerAttacker.playSound(playerAttacker.getLocation(), Sound.ENTITY_VILLAGER_NO, 0.8f, 1.0f);
+            // Không setCancelled(true), cho phép người chơi tấn công quái Raid PvE bình thường
             return;
         }
 

@@ -513,6 +513,7 @@ public class RaidSession implements Listener {
                 addMobsToQueue(EntityType.SKELETON, 4 + currentWave);
                 addMobsToQueue(EntityType.GHAST, currentWave);
                 addMobsToQueue(EntityType.RAVAGER, currentWave / 2);
+                addMobsToQueue(EntityType.PHANTOM, currentWave);
             } else {
                 // Cấp 3, 4, 5 bổ sung thêm Boss lớn và đa dạng các phân lớp
                 addMobsToQueue(EntityType.VINDICATOR, 12 + currentWave * 4);
@@ -520,6 +521,7 @@ public class RaidSession implements Listener {
                 addMobsToQueue(EntityType.GHAST, 2 + currentWave);
                 addMobsToQueue(EntityType.RAVAGER, 1 + currentWave);
                 addMobsToQueue(EntityType.EVOKER, currentWave);
+                addMobsToQueue(EntityType.PHANTOM, currentWave);
                 if (currentWave == maxWaves) {
                     addMobsToQueue(EntityType.GIANT, 1); // Siêu Boss Giant xuất hiện ở đợt cuối
                 }

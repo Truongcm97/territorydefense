@@ -246,6 +246,43 @@ public class FarmerManager extends BukkitRunnable implements Listener {
     }
 
     public java.util.List<NPCFarmer> getFarmersForCore(UUID coreId) {
+        // Khôi phục các Nông dân NPC đang tải ở World nhưng chưa đăng ký vào RAM map sau khi reload
+        TerritoryCore core = null;
+        for (TerritoryCore c : plugin.getCoreManager().getAllActiveCores()) {
+            if (c.getCoreId().equals(coreId)) {
+                core = c;
+                break;
+            }
+        }
+        if (core != null && core.getLocation() != null && core.getLocation().getWorld() != null) {
+            double scanRadius = plugin.getConfig().getDouble("farmer-settings.levels.5.scan-radius", 35.0) + 10.0;
+            org.bukkit.World world = core.getLocation().getWorld();
+            for (org.bukkit.entity.Entity entity : world.getNearbyEntities(core.getLocation(), scanRadius, 64.0, scanRadius)) {
+                if (entity instanceof Villager villager && villager.isValid()) {
+                    PersistentDataContainer pdc = villager.getPersistentDataContainer();
+                    if (pdc.has(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING)) {
+                        String coreIdStr = pdc.get(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING);
+                        if (coreIdStr != null && coreIdStr.equalsIgnoreCase(coreId.toString())) {
+                            UUID farmerUUID = null;
+                            if (villager.hasMetadata("td_farmer")) {
+                                try {
+                                    farmerUUID = UUID.fromString(villager.getMetadata("td_farmer").get(0).asString());
+                                } catch (Exception ignored) {}
+                            }
+                            if (farmerUUID == null) {
+                                farmerUUID = villager.getUniqueId();
+                            }
+                            if (!activeFarmers.containsKey(farmerUUID)) {
+                                int level = pdc.getOrDefault(PDCKeys.FARMER_LEVEL, PersistentDataType.INTEGER, 1);
+                                NPCFarmer farmer = new NPCFarmer(farmerUUID, coreId, villager, level);
+                                activeFarmers.put(farmerUUID, farmer);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         java.util.List<NPCFarmer> list = new java.util.ArrayList<>();
         for (NPCFarmer farmer : activeFarmers.values()) {
             if (farmer.getOwnerCoreUUID().equals(coreId)) {

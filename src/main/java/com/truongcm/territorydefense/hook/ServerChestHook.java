@@ -59,9 +59,19 @@ public final class ServerChestHook {
                 Bukkit.getPluginManager().getPlugin("PlayerVaults") != null) {
 
             logChestAction(player.getName(), allianceName, "MỞ KHO NGOÀI", "N/A", 0, "SUCCESS");
-            player.performCommand("chest " + allianceName);
-            player.playSound(player.getLocation(), Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
-        } else {
+            try {
+                // Đóng vai trò thực thi lệnh mở hòm đồ của plugin ServerChest/PlayerVaults
+                boolean checkCmd = player.performCommand("chest " + allianceName);
+                if (checkCmd) {
+                    player.playSound(player.getLocation(), Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
+                    return;
+                }
+            } catch (Exception ignored) {}
+            // Fallback sang native chest nếu lệnh ngoài thất bại hoặc không được thực thi thành công
+        }
+
+        // 2. Kích hoạt Kho ảo Native bảo mật cao tích hợp sẵn
+        {
             // 2. Kích hoạt Kho ảo Native bảo mật cao tích hợp sẵn
             Inventory gui = nativeGuildChests.computeIfAbsent(allianceId, k ->
                     Bukkit.createInventory(null, 54, ChatColor.DARK_BLUE + "Rương Liên Minh - " + allianceName)

@@ -121,7 +121,7 @@ public class CoreGui extends CustomHolder {
         inv.setItem(13, shieldInfo);
 
         inv.setItem(11, createGuiItem(Material.REDSTONE_TORCH, ChatColor.RED + "" + ChatColor.BOLD + "Kích Hoạt Raid Chủ Động", "BUY_RAID",
-                ChatColor.GRAY + "Chi phí kích hoạt: " + ChatColor.GOLD + "100,000 Xu",
+                ChatColor.GRAY + "Chi phí kích hoạt: " + ChatColor.GOLD + "200,000 Xu",
                 ChatColor.GRAY + "Triệu hồi cổng không gian quái Raid xâm lược.",
                 ChatColor.AQUA + "Mục đích: Farm quái lấy Shards nâng cấp Lõi cực nhanh!",
                 ChatColor.RED + "Lưu ý: Không thể mua khi Khiên Hòa Bình đang kích hoạt!"
@@ -131,7 +131,7 @@ public class CoreGui extends CustomHolder {
         long remainingMins = currentPeaceRemaining / (60 * 1000L);
 
         inv.setItem(15, createGuiItem(Material.CLOCK, ChatColor.GREEN + "" + ChatColor.BOLD + "Bỏ Qua Raid & Khiên 2 Giờ", "SKIP_RAID_PROTECT",
-                ChatColor.GRAY + "Chi phí cứu viện: " + ChatColor.GOLD + "250,000 Xu",
+                ChatColor.GRAY + "Chi phí cứu viện: " + ChatColor.GOLD + "200,000 Xu",
                 ChatColor.GRAY + "Tiêu biến toàn bộ quái Raid hiện tại lập tức,",
                 ChatColor.GRAY + "đồng thời kích hoạt Khiên Hòa Bình bảo vệ trong 2 giờ.",
                 ChatColor.YELLOW + "Khiên hiện tại còn: " + ChatColor.AQUA + remainingMins + " phút",
@@ -144,19 +144,19 @@ public class CoreGui extends CustomHolder {
         ));
 
         inv.setItem(19, createGuiItem(Material.IRON_SWORD, ChatColor.RED + "Chiêu Mộ Lính Cận Chiến (Melee)", "HIRE_MERCENARY_MELEE",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "50,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "100,000 Xu",
                 ChatColor.GRAY + "Lính cận chiến hỗ trợ cản đường và tấn công xáp lá cà.",
                 ChatColor.YELLOW + "Yêu cầu: Chỉ chủ Lõi mới có quyền chiêu mộ!"
         ));
 
         inv.setItem(21, createGuiItem(Material.BOW, ChatColor.YELLOW + "Chiêu Mộ Lính Cung Thủ (Archer)", "HIRE_MERCENARY_ARCHER",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "75,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "90,000 Xu",
                 ChatColor.GRAY + "Lính tầm xa bắn hạ mục tiêu liên tục từ khoảng cách an toàn.",
                 ChatColor.YELLOW + "Yêu cầu: Chỉ chủ Lõi mới có quyền chiêu mộ!"
         ));
 
         inv.setItem(23, createGuiItem(Material.IRON_GOLEM_SPAWN_EGG, ChatColor.GOLD + "Chiêu Mộ Lính Công Thành (Siege)", "HIRE_MERCENARY_SIEGE",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "90,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "240,000 Xu",
                 ChatColor.GRAY + "Lượng máu cực lớn, chống chịu sát thương bảo vệ tháp canh.",
                 ChatColor.YELLOW + "Yêu cầu: Chỉ chủ Lõi mới có quyền chiêu mộ!"
         ));
@@ -168,43 +168,43 @@ public class CoreGui extends CustomHolder {
         ));
 
         inv.setItem(28, createGuiItem(Material.SKELETON_SKULL, ChatColor.YELLOW + "Tháp Cung (Skeleton)", "TOWER_ARROW",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "30,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "60,000 Xu",
                 ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "16.0 blocks",
                 ChatColor.GRAY + "Đặc tính: Bắn mũi tên xuyên thấu tối đa 3 kẻ địch."
         ));
 
         inv.setItem(29, createGuiItem(Material.CREEPER_HEAD, ChatColor.GOLD + "Tháp Sét (Creeper)", "TOWER_LIGHTNING",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "45,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "90,000 Xu",
                 ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "12.0 blocks",
                 ChatColor.GRAY + "Đặc tính: Triệu hồi sấm sét giật diện rộng lan tỏa."
         ));
 
         inv.setItem(30, createGuiItem(Material.WITHER_SKELETON_SKULL, ChatColor.RED + "Tháp Hỏa (Blaze)", "TOWER_FIRE",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "50,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "100,000 Xu",
                 ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "10.0 blocks",
                 ChatColor.GRAY + "Đặc tính: Bắn hỏa cầu thiêu đốt gây sát thương liên tục."
         ));
 
         inv.setItem(31, createGuiItem(Material.ZOMBIE_HEAD, ChatColor.AQUA + "Tháp Băng (Stray)", "TOWER_FROST",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "40,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "80,000 Xu",
                 ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "14.0 blocks",
                 ChatColor.GRAY + "Đặc tính: Gây sát thương và làm chậm mục tiêu 50% tốc độ."
         ));
 
         inv.setItem(32, createGuiItem(Material.DRAGON_HEAD, ChatColor.DARK_PURPLE + "Tháp Pháo (Ghast)", "TOWER_ARTILLERY",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "65,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "130,000 Xu",
                 ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "18.0 blocks",
                 ChatColor.GRAY + "Đặc tính: Bắn pháo nổ gây sát thương diện rộng (AoE)."
         ));
 
         inv.setItem(33, createGuiItem(Material.PIGLIN_HEAD, ChatColor.GREEN + "Tháp Hồi Phục (Evoker)", "TOWER_HEALING",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "55,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "110,000 Xu",
                 ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "8.0 blocks",
                 ChatColor.GRAY + "Đặc tính: Hồi phục sinh lực liên tục cho đồng minh lân cận."
         ));
 
         inv.setItem(34, createGuiItem(Material.PLAYER_HEAD, ChatColor.LIGHT_PURPLE + "Tháp Ma Pháp (Witch)", "TOWER_SPELL",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "70,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "140,000 Xu",
                 ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "12.0 blocks",
                 ChatColor.GRAY + "Đặc tính: Tăng cường sát thương cho toàn bộ tháp lân cận."
         ));
@@ -233,12 +233,12 @@ public class CoreGui extends CustomHolder {
                     ChatColor.GRAY + "Toàn bộ ranh giới, tháp và FEP đã kịch trần."
             );
         } else {
-            double moneyCost = plugin.getConfig().getDouble("core-upgrades.money-cost-level-" + nextLevel, 500000.0);
-            int shardCost = plugin.getConfig().getInt("core-upgrades.shard-cost-level-" + nextLevel, 15);
+            double moneyCost = plugin.getConfig().getDouble("core-settings.levels." + nextLevel + ".upgrade-cost-money", 500000.0);
+            int shardCost = plugin.getConfig().getInt("core-settings.levels." + nextLevel + ".upgrade-cost-shards", 15);
 
             upgradeButton = createGuiItem(Material.ANVIL, ChatColor.GREEN + "Nâng Cấp Tiến Trình Lõi", "UPGRADE_CORE",
                     ChatColor.GRAY + "Nâng lên cấp độ: " + ChatColor.YELLOW + nextLevel,
-                    ChatColor.GRAY + "Chi phí Xu: " + ChatColor.GOLD + moneyCost + " Xu",
+                    ChatColor.GRAY + "Chi phí Xu: " + ChatColor.GOLD + String.format("%,.0f", moneyCost) + " Xu",
                     ChatColor.GRAY + "Chi phí Shards: " + ChatColor.AQUA + shardCost + " Shards",
                     ChatColor.GRAY + " Nâng cấp để mở rộng ranh giới và giới hạn tháp canh."
             );
@@ -797,13 +797,13 @@ public class CoreGui extends CustomHolder {
 
     private double getTowerCost(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType type) {
         return switch (type) {
-            case ARROW -> 30000.0;
-            case LIGHTNING -> 45000.0;
-            case FIRE -> 50000.0;
-            case FROST -> 40000.0;
-            case ARTILLERY -> 65000.0;
-            case HEALING -> 55000.0;
-            case SPELL -> 70000.0;
+            case ARROW -> 60000.0;
+            case LIGHTNING -> 90000.0;
+            case FIRE -> 100000.0;
+            case FROST -> 80000.0;
+            case ARTILLERY -> 130000.0;
+            case HEALING -> 110000.0;
+            case SPELL -> 140000.0;
         };
     }
 
