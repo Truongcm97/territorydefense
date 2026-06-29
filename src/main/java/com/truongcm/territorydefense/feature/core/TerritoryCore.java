@@ -25,6 +25,7 @@ public class TerritoryCore {
     private boolean isMerged = false;
     private int raidCallCount = 0;
     private int totalRaidCount = 0;
+    private long lastRaidCallTime = 0L;
 
     public TerritoryCore(UUID coreId, Location location, UUID ownerUUID, int level, double fep, double shield, String allyId) {
         this.coreId = coreId;
@@ -185,6 +186,7 @@ public class TerritoryCore {
     }
 
     public int getRaidCallCount() {
+        checkRaidCallReset();
         return raidCallCount;
     }
 
@@ -198,5 +200,24 @@ public class TerritoryCore {
 
     public void setTotalRaidCount(int totalRaidCount) {
         this.totalRaidCount = totalRaidCount;
+    }
+
+    public long getLastRaidCallTime() {
+        return lastRaidCallTime;
+    }
+
+    public void setLastRaidCallTime(long lastRaidCallTime) {
+        this.lastRaidCallTime = lastRaidCallTime;
+    }
+
+    public void checkRaidCallReset() {
+        if (lastRaidCallTime > 0L) {
+            long elapsed = System.currentTimeMillis() - lastRaidCallTime;
+            if (elapsed >= 24L * 60L * 60L * 1000L) { // 24 giờ
+                this.raidCallCount = 0;
+                // Không thay đổi lastRaidCallTime để tránh reset lặp liên tục,
+                // sẽ được cập nhật sang giờ mới khi người chơi kích hoạt đợt tiếp theo.
+            }
+        }
     }
 }

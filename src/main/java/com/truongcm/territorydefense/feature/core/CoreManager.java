@@ -387,6 +387,7 @@ public class CoreManager implements Listener {
 
                 TerritoryCore core = new TerritoryCore(coreId, loc, ownerUUID, level, fep, shield, allyId);
                 core.setMerged(coresConfig.getBoolean(path + ".is_merged", false));
+                core.setLastRaidCallTime(coresConfig.getLong(path + ".last_raid_call_time", 0L));
                 core.setRaidCallCount(coresConfig.getInt(path + ".raid_call_count", 0));
                 core.setTotalRaidCount(coresConfig.getInt(path + ".total_raid_count", 0));
                 activeCores.put(getBlockAlignedLocation(loc), core);
@@ -427,6 +428,7 @@ public class CoreManager implements Listener {
             coresConfig.set(path + ".peace_until", getPeaceUntil(core.getCoreId()));
             coresConfig.set(path + ".last_pve_raid", getLastRaidTime(core.getCoreId()));
             coresConfig.set(path + ".is_merged", core.isMerged());
+            coresConfig.set(path + ".last_raid_call_time", core.getLastRaidCallTime());
             coresConfig.set(path + ".raid_call_count", core.getRaidCallCount());
             coresConfig.set(path + ".total_raid_count", core.getTotalRaidCount());
 

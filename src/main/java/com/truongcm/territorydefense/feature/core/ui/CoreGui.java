@@ -515,6 +515,8 @@ public class CoreGui extends CustomHolder {
 
         if (activated) {
             plugin.getVaultEconomy().withdrawPlayer(player, cost);
+            core.setLastRaidCallTime(System.currentTimeMillis());
+            plugin.getCoreManager().saveAllCores();
             player.sendMessage(ChatColor.GREEN + "[Raid] Đã nạp " + String.format("%,.0f", cost) + " Xu (Lần gọi thứ " + (callCount + 1) + ")! Cổng không gian rạn nứt, quái Raid đang kéo đến...");
             player.playSound(player.getLocation(), org.bukkit.Sound.EVENT_RAID_HORN, 1.0f, 0.8f);
             player.closeInventory();
