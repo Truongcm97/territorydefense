@@ -381,7 +381,7 @@ public class CoreProtectionListener implements Listener {
     }
 
     /**
-     * CHẶN NGƯỜI CHƠI VÀ TRỤ TẤN CÔNG QUÁI RAID PVE
+     * CHO PHÉP NGƯỜI CHƠI VÀ THÁP CANH TẤN CÔNG QUÁI RAID PVE
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerAndTowerDamageRaidMob(EntityDamageByEntityEvent event) {
@@ -395,33 +395,10 @@ public class CoreProtectionListener implements Listener {
 
         if (!isRaidMob) return;
 
-        // 1. Cho phép người chơi tấn công trực tiếp hoặc bằng cung tên (không cancel event cho Player)
-        Player playerAttacker = null;
-        if (damager instanceof Player p) {
-            playerAttacker = p;
-        } else if (damager instanceof Projectile proj && proj.getShooter() instanceof Player p) {
-            playerAttacker = p;
-        }
-
-        if (playerAttacker != null) {
-            // Không setCancelled(true), cho phép người chơi tấn công quái Raid PvE bình thường
-            return;
-        }
-
-        // 2. Chặn Tháp canh (Towers) tấn công
-        boolean isTowerProjectile = damager.hasMetadata("td_tower_projectile")
-                || damager.hasMetadata("td_last_damaged_by_tower");
-        
-        if (isTowerProjectile) {
-            event.setCancelled(true);
-            return;
-        }
-        
-        // Hoặc kiểm tra xem damager có phải do TowerManager kích hoạt trực tiếp bằng tia quét (damage) không
-        if (damager.hasMetadata("td_tower_damage")) {
-            event.setCancelled(true);
-        }
+        // Cho phép tất cả nguồn sát thương (Player, Projectile, Tháp canh) tấn công quái Raid PvE
+        // Không cancel event — handler này chỉ còn đóng vai trò nhận dạng để debug log sau này nếu cần
     }
+
 
     /**
      * BẢO VỆ 3: CHỐNG DỊCH CHUYỂN BẰNG PISTON ĐẨY
