@@ -49,6 +49,37 @@ public class CoreGui extends CustomHolder {
 
     @Override
     public Inventory getInventory() {
+        if (core.isDisabled()) {
+            Inventory inv = Bukkit.createInventory(this, 27, ChatColor.RED + "LÕI VÔ HIỆU HÓA - CỨU HỘ");
+            ItemStack backgroundPane = createGuiItem(Material.RED_STAINED_GLASS_PANE, " ", "NONE");
+            for (int i = 0; i < 27; i++) {
+                inv.setItem(i, backgroundPane);
+            }
+
+            long remainingMs = core.getDisabledUntil() - System.currentTimeMillis();
+            long mins = Math.max(0, remainingMs / (60 * 1000L));
+            long secs = Math.max(0, (remainingMs % (60 * 1000L)) / 1000L);
+            String remainingTimeStr = String.format("%02d:%02d", mins, secs);
+
+            inv.setItem(11, createGuiItem(Material.OBSIDIAN, ChatColor.RED + "" + ChatColor.BOLD + "Lõi Đang Bị Sập Nguồn", "NONE",
+                    ChatColor.GRAY + "Trạng thái: " + ChatColor.RED + "Đang vô hiệu hóa",
+                    ChatColor.GRAY + "Tự động phục hồi sau: " + ChatColor.YELLOW + remainingTimeStr,
+                    ChatColor.GRAY + " ",
+                    ChatColor.GRAY + "Mọi tháp phòng thủ và nông dân NPC",
+                    ChatColor.GRAY + "đều đã dừng hoạt động hoàn toàn."
+            ));
+
+            inv.setItem(13, createGuiItem(Material.NETHER_STAR, ChatColor.GREEN + "" + ChatColor.BOLD + "Kích Hoạt Lập Tức", "REACTIVATE_CORE",
+                    ChatColor.GRAY + "Chi phí kích hoạt: " + ChatColor.GOLD + String.format("%,.0f", core.getReactivateCost()) + " Xu",
+                    ChatColor.GRAY + " ",
+                    ChatColor.YELLOW + "➔ Click để thanh toán cứu hộ Lõi ngay lập tức!"
+            ));
+
+            inv.setItem(15, createGuiItem(Material.BARRIER, ChatColor.RED + "Thoát Giao Diện", "CLOSE"));
+
+            return inv;
+        }
+
         Inventory inv = Bukkit.createInventory(this, 54, ChatColor.DARK_BLUE + "Lõi Lãnh Thổ - " + activeTab.name());
 
         // Phủ kính xám nền rương thẩm mỹ
@@ -75,7 +106,6 @@ public class CoreGui extends CustomHolder {
     }
 
     private void renderLogisticsTab(Inventory inv) {
-        // Hàng 1 - Trung tâm (slot 13): Thông tin FEP
         ItemStack fepGauge = new ItemStack(Material.WHEAT);
         ItemMeta fepMeta = fepGauge.getItemMeta();
         if (fepMeta != null) {
@@ -89,26 +119,80 @@ public class CoreGui extends CustomHolder {
         }
         inv.setItem(13, fepGauge);
 
-        // Hàng 2 - Trái (slot 20): Thuê Farmer | Phải (slot 24): Quản lý Farmer
         double hireCost = plugin.getConfig().getDouble("farmer-settings.hire-costs.1", 10000.0);
-        inv.setItem(20, createGuiItem(Material.VILLAGER_SPAWN_EGG, ChatColor.GREEN + "Thuê Nông Dân NPC (Farmer)", "HIRE_FARMER",
-                ChatColor.GRAY + "Giá thuê: " + ChatColor.GOLD + String.format("%,.0f", hireCost) + " Xu",
-                ChatColor.GRAY + "Farmer sẽ tự động làm ruộng & chăn nuôi nạp FEP."
-        ));
+        inv.setItem(22, createGuiItem(Material.VILLAGER_SPAWN_EGG, ChatColor.GREEN + "Thuê Nông Dân NPC (Farmer)", "HIRE_FARMER",
+                ChatColor.GRAY + "Giá thuê: " + ChatColor.GOLD + hireCost + " Xu",
+                ChatColor.GRAY + " Farmer sẽ tự động làm ruộng & chăn nuôi nạp FEP."
+            ));
+
+        com.truongcm.territorydefense.feature.logistics.NPCBuilder activeBuilder = plugin.getBuilderManager().getActiveBuilders().get(core.getCoreId());
+        if (activeBuilder == null) {
+            double builderCostMoney = plugin.getConfig().getDouble("builder-settings.hire-cost-money", 150000.0);
+            int builderCostShards = plugin.getConfig().getInt("builder-settings.hire-cost-shards", 15);
+            inv.setItem(20, createGuiItem(Material.MUD_BRICKS, ChatColor.GOLD + "Thuê Thợ Xây NPC (Builder)", "HIRE_BUILDER",
+                    ChatColor.GRAY + "Chi phí thuê:",
+                    ChatColor.GRAY + " - Tiền xu: " + ChatColor.GOLD + builderCostMoney + " Xu",
+                    ChatColor.GRAY + " - Shards: " + ChatColor.AQUA + builderCostShards + " Shards",
+                    ChatColor.GRAY + " NPC sẽ tự động tái thiết các block bị hư hại sau Raid."
+                ));
+        } else {
+            int currentLevel = core.getBuilderLevel();
+            int currentSpeed = switch (currentLevel) {
+                case 1 -> 2;
+                case 2 -> 5;
+                case 3 -> 10;
+                case 4 -> 15;
+                case 5 -> 25;
+                default -> 2;
+            };
+            inv.setItem(20, createGuiItem(Material.MUD_BRICKS, ChatColor.GOLD + "Quản Lý & Nâng Cấp Thợ Xây (Cấp " + currentLevel + ")", "OPEN_BUILDER_UPGRADE",
+                    ChatColor.GRAY + "Trạng thái: " + (activeBuilder.isRebuilding() ? ChatColor.GREEN + "Đang xây dựng" : ChatColor.YELLOW + "Rảnh rỗi"),
+                    ChatColor.GRAY + "Tốc độ xây dựng: " + ChatColor.AQUA + currentSpeed + " block/giây",
+                    " ",
+                    ChatColor.YELLOW + "➔ Nhấp để mở bảng Nâng cấp & Sa thải Thợ xây."
+                ));
+        }
+
+        ItemStack depositHelper = createGuiItem(Material.CHEST, ChatColor.AQUA + "" + ChatColor.BOLD + "Kho Thực Phẩm Lõi (54 Ô)", "OPEN_FOOD_WAREHOUSE",
+                ChatColor.GRAY + "Bấm vào để mở kho thực phẩm trung chuyển.",
+                ChatColor.GRAY + "Nông dân và người chơi có thể nạp thức ăn vào.",
+                ChatColor.GRAY + "Lõi sẽ tự chuyển hóa thức ăn thành FEP dần dần."
+        );
+        inv.setItem(31, depositHelper);
+
+        ItemStack rebuildHelper = createGuiItem(Material.BRICKS, ChatColor.YELLOW + "" + ChatColor.BOLD + "Kho Vật Liệu Tái Thiết (54 Ô)", "OPEN_REBUILD_WAREHOUSE",
+                ChatColor.GRAY + "Bấm vào để mở rương nguyên liệu tái thiết.",
+                ChatColor.GRAY + "Người chơi bỏ các khối block xây dựng vào đây.",
+                ChatColor.GRAY + "NPC Mason sẽ lấy nguyên liệu để xây dựng lãnh thổ."
+        );
+        inv.setItem(29, rebuildHelper);
 
         inv.setItem(24, createGuiItem(Material.LEATHER_HELMET, ChatColor.YELLOW + "" + ChatColor.BOLD + "Quản Lý Nông Dân", "OPEN_FARMER_LIST",
                 ChatColor.GRAY + "Xem danh sách và nâng cấp toàn bộ",
                 ChatColor.GRAY + "Nông dân NPC hiện có của Lõi lãnh thổ."
         ));
 
-        // Hàng 3 - Trung tâm (slot 31): Khu tiếp tế FEP
-        ItemStack depositHelper = createGuiItem(Material.LIGHT_BLUE_STAINED_GLASS_PANE,
-                ChatColor.AQUA + "" + ChatColor.BOLD + "Khu Tiếp Tế FEP", "DEPOSIT_ZONE",
-                ChatColor.GRAY + "Cầm nông sản/thức ăn trên tay,",
-                ChatColor.GRAY + "sau đó CLICK TRÁI vào đây để nạp FEP!",
-                ChatColor.YELLOW + "Vật phẩm chấp nhận: Thực phẩm chín, ngũ cốc..."
-        );
-        inv.setItem(31, depositHelper);
+        // Nút tính năng Blueprint
+        inv.setItem(38, createGuiItem(Material.PAPER, ChatColor.BLUE + "" + ChatColor.BOLD + "Quản Lý 9 Bản Vẽ Thiết Kế", "OPEN_BLUEPRINTS",
+                ChatColor.GRAY + "Mở giao diện lưu trữ, chọn xây dựng hoặc",
+                ChatColor.GRAY + "xóa tối đa 9 bản thiết kế công trình."
+        ));
+
+        inv.setItem(40, createGuiItem(Material.ANVIL, ChatColor.LIGHT_PURPLE + "" + ChatColor.BOLD + "Tái Thiết Theo Ảnh Trước Raid", "TRIGGER_PRE_RAID_REBUILD",
+                ChatColor.GRAY + "Yêu cầu NPC Mason khôi phục các khối block",
+                ChatColor.GRAY + "bị phá huỷ dựa trên ảnh chụp trước trận Raid gần nhất."
+        ));
+
+        boolean isShared = core.isPublicBlueprintShared();
+        inv.setItem(42, createGuiItem(Material.MAP, ChatColor.GREEN + "" + ChatColor.BOLD + "Chia Sẻ Bản Vẽ Công Khai", "TOGGLE_SHARE_BLUEPRINT",
+                ChatColor.GRAY + "Trạng thái hiện tại: " + (isShared ? ChatColor.GREEN + "ĐANG BẬT" : ChatColor.RED + "ĐANG TẮT"),
+                ChatColor.GRAY + "Cho phép người chơi khác/đồng minh sao chép thiết kế."
+        ));
+
+        inv.setItem(44, createGuiItem(Material.BOOK, ChatColor.GOLD + "" + ChatColor.BOLD + "Cửa Hàng Bản Vẽ Thiết Kế", "OPEN_BLUEPRINT_SHOP",
+                ChatColor.GRAY + "Mở cửa hàng bản vẽ để mua các thiết kế",
+                ChatColor.GRAY + "công trình tuyệt đẹp được chia sẻ bởi người chơi khác."
+        ));
     }
 
     private void renderCombatTab(Inventory inv) {
@@ -125,45 +209,18 @@ public class CoreGui extends CustomHolder {
         }
         inv.setItem(13, shieldInfo);
 
-        // Tính giá Raid thực tế (sau reset 24h nếu cần)
-        core.checkRaidCallReset();
-        double baseCost = plugin.getConfig().getDouble("raid-settings.purchase-costs.1", 200000.0);
-        int callCount = core.getRaidCallCount();
-        double actualRaidCost = baseCost * Math.pow(1.30, callCount);
-
-        // Tính thời gian reset 24h còn lại
-        long lastCallTime = core.getLastRaidCallTime();
-        String resetInfo;
-        if (lastCallTime <= 0L || callCount == 0) {
-            resetInfo = ChatColor.GREEN + "Reset: Chưa gọi lần nào (Giá gốc)";
-        } else {
-            long elapsed = System.currentTimeMillis() - lastCallTime;
-            long resetIn = 24L * 60L * 60L * 1000L - elapsed;
-            if (resetIn <= 0) {
-                resetInfo = ChatColor.GREEN + "Reset: Sẵn sàng reset về giá gốc khi mua!";
-            } else {
-                long hoursLeft = resetIn / (60 * 60 * 1000L);
-                long minsLeft = (resetIn % (60 * 60 * 1000L)) / (60 * 1000L);
-                resetInfo = ChatColor.YELLOW + "Reset về giá gốc sau: " + hoursLeft + "h " + minsLeft + "m";
-            }
-        }
-
         inv.setItem(11, createGuiItem(Material.REDSTONE_TORCH, ChatColor.RED + "" + ChatColor.BOLD + "Kích Hoạt Raid Chủ Động", "BUY_RAID",
-                ChatColor.GRAY + "Chi phí lần này: " + ChatColor.GOLD + String.format("%,.0f", actualRaidCost) + " Xu",
-                ChatColor.GRAY + "Số lần đã gọi: " + ChatColor.AQUA + callCount + " lần",
-                ChatColor.GRAY + "Mỗi lần gọi: Giá +30%, Quái mạnh +20%, Drop +10%",
-                resetInfo,
+                ChatColor.GRAY + "Chi phí kích hoạt: " + ChatColor.GOLD + "100,000 Xu",
                 ChatColor.GRAY + "Triệu hồi cổng không gian quái Raid xâm lược.",
                 ChatColor.AQUA + "Mục đích: Farm quái lấy Shards nâng cấp Lõi cực nhanh!",
                 ChatColor.RED + "Lưu ý: Không thể mua khi Khiên Hòa Bình đang kích hoạt!"
         ));
 
-
         long currentPeaceRemaining = Math.max(0L, plugin.getCoreManager().getPeaceUntil(core.getCoreId()) - System.currentTimeMillis());
         long remainingMins = currentPeaceRemaining / (60 * 1000L);
 
         inv.setItem(15, createGuiItem(Material.CLOCK, ChatColor.GREEN + "" + ChatColor.BOLD + "Bỏ Qua Raid & Khiên 2 Giờ", "SKIP_RAID_PROTECT",
-                ChatColor.GRAY + "Chi phí cứu viện: " + ChatColor.GOLD + "200,000 Xu",
+                ChatColor.GRAY + "Chi phí cứu viện: " + ChatColor.GOLD + "250,000 Xu",
                 ChatColor.GRAY + "Tiêu biến toàn bộ quái Raid hiện tại lập tức,",
                 ChatColor.GRAY + "đồng thời kích hoạt Khiên Hòa Bình bảo vệ trong 2 giờ.",
                 ChatColor.YELLOW + "Khiên hiện tại còn: " + ChatColor.AQUA + remainingMins + " phút",
@@ -176,19 +233,19 @@ public class CoreGui extends CustomHolder {
         ));
 
         inv.setItem(19, createGuiItem(Material.IRON_SWORD, ChatColor.RED + "Chiêu Mộ Lính Cận Chiến (Melee)", "HIRE_MERCENARY_MELEE",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "100,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "50,000 Xu",
                 ChatColor.GRAY + "Lính cận chiến hỗ trợ cản đường và tấn công xáp lá cà.",
                 ChatColor.YELLOW + "Yêu cầu: Chỉ chủ Lõi mới có quyền chiêu mộ!"
         ));
 
         inv.setItem(21, createGuiItem(Material.BOW, ChatColor.YELLOW + "Chiêu Mộ Lính Cung Thủ (Archer)", "HIRE_MERCENARY_ARCHER",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "90,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "75,000 Xu",
                 ChatColor.GRAY + "Lính tầm xa bắn hạ mục tiêu liên tục từ khoảng cách an toàn.",
                 ChatColor.YELLOW + "Yêu cầu: Chỉ chủ Lõi mới có quyền chiêu mộ!"
         ));
 
         inv.setItem(23, createGuiItem(Material.IRON_GOLEM_SPAWN_EGG, ChatColor.GOLD + "Chiêu Mộ Lính Công Thành (Siege)", "HIRE_MERCENARY_SIEGE",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "240,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "90,000 Xu",
                 ChatColor.GRAY + "Lượng máu cực lớn, chống chịu sát thương bảo vệ tháp canh.",
                 ChatColor.YELLOW + "Yêu cầu: Chỉ chủ Lõi mới có quyền chiêu mộ!"
         ));
@@ -200,43 +257,43 @@ public class CoreGui extends CustomHolder {
         ));
 
         inv.setItem(28, createGuiItem(Material.SKELETON_SKULL, ChatColor.YELLOW + "Tháp Cung (Skeleton)", "TOWER_ARROW",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "60,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "30,000 Xu",
                 ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "16.0 blocks",
                 ChatColor.GRAY + "Đặc tính: Bắn mũi tên xuyên thấu tối đa 3 kẻ địch."
         ));
 
         inv.setItem(29, createGuiItem(Material.CREEPER_HEAD, ChatColor.GOLD + "Tháp Sét (Creeper)", "TOWER_LIGHTNING",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "90,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "45,000 Xu",
                 ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "12.0 blocks",
                 ChatColor.GRAY + "Đặc tính: Triệu hồi sấm sét giật diện rộng lan tỏa."
         ));
 
         inv.setItem(30, createGuiItem(Material.WITHER_SKELETON_SKULL, ChatColor.RED + "Tháp Hỏa (Blaze)", "TOWER_FIRE",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "100,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "50,000 Xu",
                 ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "10.0 blocks",
                 ChatColor.GRAY + "Đặc tính: Bắn hỏa cầu thiêu đốt gây sát thương liên tục."
         ));
 
         inv.setItem(31, createGuiItem(Material.ZOMBIE_HEAD, ChatColor.AQUA + "Tháp Băng (Stray)", "TOWER_FROST",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "80,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "40,000 Xu",
                 ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "14.0 blocks",
                 ChatColor.GRAY + "Đặc tính: Gây sát thương và làm chậm mục tiêu 50% tốc độ."
         ));
 
         inv.setItem(32, createGuiItem(Material.DRAGON_HEAD, ChatColor.DARK_PURPLE + "Tháp Pháo (Ghast)", "TOWER_ARTILLERY",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "130,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "65,000 Xu",
                 ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "18.0 blocks",
                 ChatColor.GRAY + "Đặc tính: Bắn pháo nổ gây sát thương diện rộng (AoE)."
         ));
 
         inv.setItem(33, createGuiItem(Material.PIGLIN_HEAD, ChatColor.GREEN + "Tháp Hồi Phục (Evoker)", "TOWER_HEALING",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "110,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "55,000 Xu",
                 ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "8.0 blocks",
                 ChatColor.GRAY + "Đặc tính: Hồi phục sinh lực liên tục cho đồng minh lân cận."
         ));
 
         inv.setItem(34, createGuiItem(Material.PLAYER_HEAD, ChatColor.LIGHT_PURPLE + "Tháp Ma Pháp (Witch)", "TOWER_SPELL",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "140,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "70,000 Xu",
                 ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "12.0 blocks",
                 ChatColor.GRAY + "Đặc tính: Tăng cường sát thương cho toàn bộ tháp lân cận."
         ));
@@ -259,51 +316,24 @@ public class CoreGui extends CustomHolder {
         int nextLevel = core.getLevel() + 1;
         boolean maxed = core.getLevel() >= 5;
 
-        // Slot 13 - Trung tâm trên: Nâng cấp Lõi
         ItemStack upgradeButton;
         if (maxed) {
             upgradeButton = createGuiItem(Material.NETHER_STAR, ChatColor.GOLD + "Lõi Đạt Cấp Cực Đại (Cấp 5)", "NONE",
                     ChatColor.GRAY + "Toàn bộ ranh giới, tháp và FEP đã kịch trần."
             );
         } else {
-            double moneyCost = plugin.getConfig().getDouble("core-settings.levels." + nextLevel + ".upgrade-cost-money", 500000.0);
-            int shardCost = plugin.getConfig().getInt("core-settings.levels." + nextLevel + ".upgrade-cost-shards", 15);
+            double moneyCost = plugin.getConfig().getDouble("core-upgrades.money-cost-level-" + nextLevel, 500000.0);
+            int shardCost = plugin.getConfig().getInt("core-upgrades.shard-cost-level-" + nextLevel, 15);
 
             upgradeButton = createGuiItem(Material.ANVIL, ChatColor.GREEN + "Nâng Cấp Tiến Trình Lõi", "UPGRADE_CORE",
                     ChatColor.GRAY + "Nâng lên cấp độ: " + ChatColor.YELLOW + nextLevel,
-                    ChatColor.GRAY + "Chi phí Xu: " + ChatColor.GOLD + String.format("%,.0f", moneyCost) + " Xu",
+                    ChatColor.GRAY + "Chi phí Xu: " + ChatColor.GOLD + moneyCost + " Xu",
                     ChatColor.GRAY + "Chi phí Shards: " + ChatColor.AQUA + shardCost + " Shards",
-                    ChatColor.GRAY + "Nâng cấp để mở rộng ranh giới và giới hạn tháp canh."
+                    ChatColor.GRAY + " Nâng cấp để mở rộng ranh giới và giới hạn tháp canh."
             );
         }
         inv.setItem(13, upgradeButton);
 
-        // Slot 20 - Trái giữa: Gộp Lãnh Địa
-        ItemStack mergeButton = createGuiItem(
-                core.isMerged() ? Material.BEACON : Material.MAP,
-                core.isMerged() ? ChatColor.GOLD + "" + ChatColor.BOLD + "Trạng thái: Đã Gộp Lãnh Địa (+10%)" : ChatColor.GREEN + "" + ChatColor.BOLD + "Gộp Lãnh Địa Liên Minh",
-                "LAND_MERGE",
-                ChatColor.GRAY + "Gộp ranh giới đất với đồng minh ở gần.",
-                ChatColor.YELLOW + "Hiệu quả gộp đất:",
-                ChatColor.AQUA + " - Tăng 10% Giáp ảo tối đa",
-                ChatColor.AQUA + " - Tăng 10% Sức chứa FEP",
-                " ",
-                core.isMerged() ? ChatColor.GREEN + "✔ Đang hoạt động và nhận bùa lợi!" : ChatColor.YELLOW + "➔ Click để quét và kích hoạt gộp lãnh địa!"
-        );
-        inv.setItem(20, mergeButton);
-
-        // Slot 24 - Phải giữa: Rút Shard
-        int currentShards = plugin.getCoreManager().getShards(core.getCoreId());
-        ItemStack withdrawShardsButton = createGuiItem(Material.PRISMARINE_SHARD, ChatColor.AQUA + "" + ChatColor.BOLD + "Rút Shard Tích Lũy", "WITHDRAW_SHARDS",
-                ChatColor.GRAY + "Số lượng tích lũy hiện tại: " + ChatColor.GREEN + currentShards + " Shards",
-                ChatColor.GRAY + "Nhấp để rút toàn bộ Shard vật lý ra hòm đồ.",
-                ChatColor.YELLOW + "Yêu cầu: Hòm đồ phải có ít nhất 1 ô trống.",
-                ChatColor.RED + "Lưu ý: Chỉ chủ sở hữu mới có quyền rút Shard!",
-                ChatColor.RED + "Không thể rút khi đang trong trạng thái Chiến Sự/Raid!"
-        );
-        inv.setItem(24, withdrawShardsButton);
-
-        // Slot 31 - Trung tâm dưới: Thu Hồi Lõi (tách biệt vì nguy hiểm)
         ItemStack retrieveButton = createGuiItem(Material.REDSTONE_BLOCK, ChatColor.RED + "" + ChatColor.BOLD + "Thu Hồi & Di Dời Lõi Lãnh Thổ", "RETRIEVE_CORE",
                 ChatColor.GRAY + "Thu hồi Lõi về dạng vật phẩm gốc.",
                 ChatColor.GRAY + "Toàn bộ tháp canh và Farmer liên quan sẽ được đóng gói.",
@@ -311,6 +341,24 @@ public class CoreGui extends CustomHolder {
                 ChatColor.RED + "Lưu ý: Chỉ chủ sở hữu mới có quyền thu hồi!"
         );
         inv.setItem(31, retrieveButton);
+
+        int currentShards = plugin.getCoreManager().getShards(core.getCoreId());
+        ItemStack withdrawShardsButton = createGuiItem(Material.PRISMARINE_SHARD, ChatColor.AQUA + "" + ChatColor.BOLD + "Rút Shard Tích Lũy", "WITHDRAW_SHARDS",
+                ChatColor.GRAY + "Số lượng tích lũy hiện tại: " + ChatColor.GREEN + currentShards + " Shards",
+                ChatColor.GRAY + "Nhấp để rút toàn bộ Shard vật lý ra hòm đồ.",
+                ChatColor.YELLOW + "Yêu cầu: Hòm đồ có chỗ trống.",
+                ChatColor.RED + "Lưu ý: Chỉ chủ sở hữu mới có quyền rút Shard!",
+                ChatColor.RED + "Không thể rút khi đang trong trạng thái Chiến Sự/Raid!"
+        );
+        inv.setItem(33, withdrawShardsButton);
+
+        ItemStack depositShardsButton = createGuiItem(Material.AMETHYST_SHARD, ChatColor.LIGHT_PURPLE + "" + ChatColor.BOLD + "Nộp Shard Vào Lõi", "DEPOSIT_SHARDS",
+                ChatColor.GRAY + "Nhấp để nộp toàn bộ Shard vật lý từ hòm đồ",
+                ChatColor.GRAY + "vào kho tích lũy của Lõi lãnh thổ.",
+                ChatColor.YELLOW + "Yêu cầu: Có Shard hợp lệ trong người.",
+                ChatColor.RED + "Lưu ý: Chỉ chủ sở hữu mới có quyền nộp Shard!"
+        );
+        inv.setItem(35, depositShardsButton);
     }
 
     @Override
@@ -327,6 +375,11 @@ public class CoreGui extends CustomHolder {
                 return;
             }
 
+            if (action.equalsIgnoreCase("REACTIVATE_CORE")) {
+                handleReactivateCore(player);
+                return;
+            }
+
             if (action.startsWith("TAB_")) {
                 String tabStr = action.substring(4);
                 try {
@@ -337,8 +390,68 @@ public class CoreGui extends CustomHolder {
                 return;
             }
 
-            if (action.equalsIgnoreCase("DEPOSIT_ZONE")) {
-                handleDepositZone(event, player);
+            if (action.equalsIgnoreCase("OPEN_FOOD_WAREHOUSE")) {
+                player.openInventory(core.getFoodWarehouse());
+                player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
+                return;
+            }
+
+            if (action.equalsIgnoreCase("OPEN_REBUILD_WAREHOUSE")) {
+                player.openInventory(core.getRebuildWarehouse());
+                player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
+                return;
+            }
+
+            if (action.equalsIgnoreCase("OPEN_BUILDER_UPGRADE")) {
+                com.truongcm.territorydefense.feature.logistics.NPCBuilder builder = plugin.getBuilderManager().getActiveBuilders().get(core.getCoreId());
+                if (builder != null) {
+                    player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.BuilderUpgradeGui(plugin, builder, core).getInventory());
+                    player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
+                }
+                return;
+            }
+
+            if (action.equalsIgnoreCase("HIRE_BUILDER")) {
+                if (plugin.getBuilderManager().hireNewBuilder(player, core)) {
+                    player.closeInventory();
+                }
+                return;
+            }
+
+            if (action.equalsIgnoreCase("OPEN_BLUEPRINTS")) {
+                player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.BlueprintListGui(plugin, core).getInventory());
+                player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
+                return;
+            }
+
+            if (action.equalsIgnoreCase("OPEN_BLUEPRINT_SHOP")) {
+                player.closeInventory();
+                player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.BlueprintShopGui(plugin, core).getInventory());
+                player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
+                return;
+            }
+
+            if (action.equalsIgnoreCase("TRIGGER_PRE_RAID_REBUILD")) {
+                com.truongcm.territorydefense.feature.logistics.NPCBuilder builder = plugin.getBuilderManager().getActiveBuilders().get(core.getCoreId());
+                if (builder == null) {
+                    player.sendMessage(ChatColor.RED + "Bạn cần thuê Thợ Xây NPC trước!");
+                    return;
+                }
+                if (builder.getLastPreRaidSnapshot().isEmpty()) {
+                    player.sendMessage(ChatColor.RED + "Không có ảnh chụp Lãnh thổ trước trận Raid nào được lưu hoặc trận đấu chưa diễn ra!");
+                    return;
+                }
+                builder.startRebuild(core, builder.getLastPreRaidSnapshot(), player);
+                player.closeInventory();
+                return;
+            }
+
+            if (action.equalsIgnoreCase("TOGGLE_SHARE_BLUEPRINT")) {
+                core.setPublicBlueprintShared(!core.isPublicBlueprintShared());
+                plugin.getCoreManager().registerCore(core.getLocation(), core);
+                player.openInventory(new CoreGui(plugin, core, CoreTab.LOGISTICS).getInventory());
+                player.sendMessage(ChatColor.GREEN + "Đã thay đổi trạng thái chia sẻ bản vẽ sang: " + (core.isPublicBlueprintShared() ? ChatColor.GREEN + "CÔNG KHAI" : ChatColor.RED + "RIÊNG TƯ"));
+                player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.0f);
                 return;
             }
 
@@ -377,49 +490,13 @@ public class CoreGui extends CustomHolder {
                 return;
             }
 
-            if (action.equalsIgnoreCase("UPGRADE_CORE")) {
-                handleUpgradeCore(player);
+            if (action.equalsIgnoreCase("DEPOSIT_SHARDS")) {
+                handleDepositShards(player);
                 return;
             }
 
-            if (action.equalsIgnoreCase("LAND_MERGE")) {
-                if (core.isMerged()) {
-                    core.setMerged(false);
-                    plugin.getCoreManager().saveAllCores();
-                    player.sendMessage(ChatColor.YELLOW + "[Gộp Đất] Đã hủy trạng thái gộp ranh giới. Bùa lợi 10% đã bị gỡ bỏ.");
-                    player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_ANVIL_BREAK, 1.0f, 1.0f);
-                } else {
-                    String playerAlly = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId()) : null;
-                    if (playerAlly == null) {
-                        player.sendMessage(ChatColor.RED + "[Gộp Đất] Bạn cần gia nhập một Liên minh trước khi thực hiện gộp lãnh địa!");
-                        player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
-                        return;
-                    }
-                    // Quét các lõi cùng liên minh ở gần
-                    boolean foundAllyCore = false;
-                    for (TerritoryCore other : plugin.getCoreManager().getAllActiveCores()) {
-                        if (other.getCoreId().equals(core.getCoreId())) continue;
-                        String otherAlly = other.getAllyId();
-                        if (otherAlly != null && otherAlly.equalsIgnoreCase(playerAlly)) {
-                            double distance = core.getLocation().distance(other.getLocation());
-                            double maxDistance = (core.getRadius() + other.getRadius()) * 2.0;
-                            if (distance <= maxDistance) {
-                                foundAllyCore = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (foundAllyCore) {
-                        core.setMerged(true);
-                        plugin.getCoreManager().saveAllCores();
-                        player.sendMessage(ChatColor.GREEN + "[Gộp Đất] Gộp lãnh địa thành công! Bạn nhận được bùa lợi +10% Giáp và Sức chứa FEP.");
-                        player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
-                    } else {
-                        player.sendMessage(ChatColor.RED + "[Gộp Đất] Không tìm thấy Lõi Lãnh thổ nào của đồng minh trong phạm vi liên kết!");
-                        player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
-                    }
-                }
-                player.openInventory(new CoreGui(plugin, core, CoreTab.FINANCE).getInventory());
+            if (action.equalsIgnoreCase("UPGRADE_CORE")) {
+                handleUpgradeCore(player);
                 return;
             }
 
@@ -451,18 +528,6 @@ public class CoreGui extends CustomHolder {
             }
 
             if (action.equalsIgnoreCase("OPEN_FARMER_LIST")) {
-                // Kiểm tra xem người click có quyền sở hữu hoặc đồng minh không
-                String playerAlly = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId()) : null;
-                String coreAlly = core.getAllyId();
-                boolean isOwner = core.getOwnerUUID().equals(player.getUniqueId());
-                boolean isAlly = coreAlly != null && playerAlly != null && coreAlly.equalsIgnoreCase(playerAlly);
-
-                if (!isOwner && !isAlly) {
-                    player.sendMessage(ChatColor.RED + "[Bảo vệ] Bạn không có quyền quản lý hay xem Nông dân của Lõi này!");
-                    player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
-                    return;
-                }
-
                 player.closeInventory();
                 player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.FarmerListGui(plugin, core, player).getInventory());
                 player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_BARREL_OPEN, 1.0f, 1.2f);
@@ -492,7 +557,7 @@ public class CoreGui extends CustomHolder {
             return;
         }
 
-        double fepValue = getFoodFepValue(cursorItem.getType());
+        double fepValue = plugin.getFepManager().getFoodFepValue(cursorItem.getType());
         double currentFep = core.getFep();
         double maxFep = core.getMaxFepCapacity();
 
@@ -502,28 +567,31 @@ public class CoreGui extends CustomHolder {
             return;
         }
 
-        double newFep = Math.min(maxFep, currentFep + fepValue);
+        double missingFep = maxFep - currentFep;
+        int requiredAmount = (int) Math.ceil(missingFep / fepValue);
+        int consumedAmount = Math.min(cursorItem.getAmount(), requiredAmount);
+
+        double fepAdded = consumedAmount * fepValue;
+        double newFep = Math.min(maxFep, currentFep + fepAdded);
         core.setFep(newFep);
         plugin.getCoreManager().saveAllCores();
 
-        int amount = cursorItem.getAmount();
-        if (amount > 1) {
-            cursorItem.setAmount(amount - 1);
+        int remaining = cursorItem.getAmount() - consumedAmount;
+        if (remaining > 0) {
+            cursorItem.setAmount(remaining);
         } else {
             event.setCursor(null);
         }
 
-        player.sendMessage(ChatColor.GREEN + "[Logistics] Đã nạp thành công: " + ChatColor.YELLOW + cursorItem.getType().name() +
-                ChatColor.GREEN + " (+" + fepValue + " FEP). Hiện tại: " + String.format("%.1f", newFep) + "/" + maxFep);
+        player.sendMessage(ChatColor.GREEN + "[Logistics] Đã nạp thành công: " + ChatColor.YELLOW + consumedAmount + "x " + cursorItem.getType().name() +
+                ChatColor.GREEN + " (+" + String.format("%.1f", fepAdded) + " FEP). Hiện tại: " + String.format("%.1f", newFep) + "/" + maxFep);
         player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_BURP, 1.0f, 1.0f);
 
         player.openInventory(new CoreGui(plugin, core, CoreTab.LOGISTICS).getInventory());
     }
 
     private void handleBuyRaid(Player player) {
-        double baseCost = plugin.getConfig().getDouble("raid-settings.purchase-costs.1", 100000.0);
-        int callCount = core.getRaidCallCount();
-        double cost = baseCost * Math.pow(1.30, callCount);
+        double cost = plugin.getConfig().getDouble("raid-settings.purchase-costs.1", 100000.0);
 
         if (!plugin.getVaultEconomy().has(player, cost)) {
             player.sendMessage(ChatColor.RED + "[Raid] Bạn không đủ Xu để mua đợt quái công thành! Cần: " + String.format("%,.0f", cost) + " Xu.");
@@ -545,15 +613,13 @@ public class CoreGui extends CustomHolder {
 
         boolean activated = false;
         if (plugin.getRaidSession() != null) {
-            plugin.getRaidSession().startRaid(core, true, callCount + 1);
+            plugin.getRaidSession().startRaid(core, true, 1);
             activated = true;
         }
 
         if (activated) {
             plugin.getVaultEconomy().withdrawPlayer(player, cost);
-            core.setLastRaidCallTime(System.currentTimeMillis());
-            plugin.getCoreManager().saveAllCores();
-            player.sendMessage(ChatColor.GREEN + "[Raid] Đã nạp " + String.format("%,.0f", cost) + " Xu (Lần gọi thứ " + (callCount + 1) + ")! Cổng không gian rạn nứt, quái Raid đang kéo đến...");
+            player.sendMessage(ChatColor.GREEN + "[Raid] Đã nạp " + String.format("%,.0f", cost) + " Xu! Cổng không gian rạn nứt, quái Raid đang kéo đến...");
             player.playSound(player.getLocation(), org.bukkit.Sound.EVENT_RAID_HORN, 1.0f, 0.8f);
             player.closeInventory();
         } else {
@@ -712,6 +778,22 @@ public class CoreGui extends CustomHolder {
         }
     }
 
+    public static ItemStack createSecureShard(int amount) {
+        ItemStack shard = new ItemStack(Material.PRISMARINE_SHARD, amount);
+        ItemMeta meta = shard.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(ChatColor.AQUA + "" + ChatColor.BOLD + "Mảnh Vỡ Không Gian (Shard)");
+            meta.setLore(Arrays.asList(
+                    ChatColor.GRAY + "Nguyên liệu nâng cấp hệ thống lãnh thổ.",
+                    ChatColor.YELLOW + "Sử dụng để nộp vào Lõi và nâng cấp Lõi Lãnh Thổ."
+            ));
+            meta.getPersistentDataContainer().set(PDCKeys.IS_SHARD_ITEM, PersistentDataType.BYTE, (byte) 1);
+            meta.getPersistentDataContainer().set(PDCKeys.SECURE_ITEM_ID, PersistentDataType.STRING, "TD_SECURE_SHARD");
+            shard.setItemMeta(meta);
+        }
+        return shard;
+    }
+
     private void handleWithdrawShards(Player player) {
         String playerAllyId = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId()) : null;
         String coreAllyId = plugin.getCoreManager().getCoreAlliance(core);
@@ -735,31 +817,75 @@ public class CoreGui extends CustomHolder {
             return;
         }
 
-        if (player.getInventory().firstEmpty() == -1) {
-            player.sendMessage(ChatColor.RED + "[Tài chính] Hòm đồ của bạn đã đầy! Vui lòng dọn trống ít nhất 1 ô.");
-            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
-            return;
+        // Tính toán các ô trống cần thiết để chia các stack 64
+        int emptySlots = 0;
+        for (ItemStack item : player.getInventory().getStorageContents()) {
+            if (item == null || item.getType() == Material.AIR) {
+                emptySlots++;
+            }
         }
 
-        ItemStack shardItem = new ItemStack(Material.PRISMARINE_SHARD, shards);
-        ItemMeta meta = shardItem.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(ChatColor.AQUA + "" + ChatColor.BOLD + "Mảnh Không Gian (Shard)");
-            meta.setLore(Arrays.asList(
-                    ChatColor.GRAY + "Nguyên liệu quý hiếm thu hoạch từ các đợt Raid.",
-                    ChatColor.YELLOW + "Sử dụng để nâng cấp Lõi Lãnh Thổ lên cấp độ cao hơn."
-            ));
-            NamespacedKey shardPdcKey = PDCKeys.IS_SHARD_ITEM;
-            meta.getPersistentDataContainer().set(shardPdcKey, PersistentDataType.BYTE, (byte) 1);
-            shardItem.setItemMeta(meta);
+        List<ItemStack> itemsToGive = new ArrayList<>();
+        int temp = shards;
+        while (temp > 0) {
+            int amount = Math.min(temp, 64);
+            itemsToGive.add(createSecureShard(amount));
+            temp -= amount;
+        }
+
+        if (emptySlots < itemsToGive.size()) {
+            player.sendMessage(ChatColor.RED + "[Tài chính] Hòm đồ không đủ chỗ trống! Cần ít nhất " + itemsToGive.size() + " ô trống.");
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            return;
         }
 
         plugin.getCoreManager().setShards(core.getCoreId(), 0);
         plugin.getCoreManager().saveAllCores();
 
-        player.getInventory().addItem(shardItem);
-        player.sendMessage(ChatColor.GREEN + "[Tài chính] Rút thành công " + ChatColor.YELLOW + shards + " Shards" + ChatColor.GREEN + " tích lũy vào túi đồ cá nhân!");
+        for (ItemStack item : itemsToGive) {
+            player.getInventory().addItem(item);
+        }
+
+        player.sendMessage(ChatColor.GREEN + "[Tài chính] Rút thành công " + ChatColor.YELLOW + shards + " Shards" + ChatColor.GREEN + " tích lũy (dạng Stack 64) vào túi đồ!");
         player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
+
+        player.openInventory(new CoreGui(plugin, core, CoreTab.FINANCE).getInventory());
+    }
+
+    private void handleDepositShards(Player player) {
+        if (!core.getOwnerUUID().equals(player.getUniqueId())) {
+            player.sendMessage(ChatColor.RED + "[Bảo vệ] Bạn không phải là chủ sở hữu Lõi lãnh thổ này!");
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            return;
+        }
+
+        int totalDeposited = 0;
+        ItemStack[] contents = player.getInventory().getContents();
+        for (int i = 0; i < contents.length; i++) {
+            ItemStack item = contents[i];
+            if (item == null || item.getType() != Material.PRISMARINE_SHARD) continue;
+
+            if (item.hasItemMeta()) {
+                org.bukkit.persistence.PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
+                if (pdc.has(PDCKeys.IS_SHARD_ITEM, PersistentDataType.BYTE) || pdc.has(PDCKeys.SECURE_ITEM_ID, PersistentDataType.STRING)) {
+                    totalDeposited += item.getAmount();
+                    player.getInventory().setItem(i, null);
+                }
+            }
+        }
+
+        if (totalDeposited <= 0) {
+            player.sendMessage(ChatColor.RED + "[Tài chính] Bạn không có Mảnh Không Gian (Shard) hợp lệ nào trong hòm đồ để nộp!");
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            return;
+        }
+
+        int currentShards = plugin.getCoreManager().getShards(core.getCoreId());
+        plugin.getCoreManager().setShards(core.getCoreId(), currentShards + totalDeposited);
+        plugin.getCoreManager().saveAllCores();
+
+        player.sendMessage(ChatColor.GREEN + "[Tài chính] Nộp thành công " + ChatColor.YELLOW + totalDeposited + " Shards" + ChatColor.GREEN + " vào Lõi lãnh thổ!");
+        player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
 
         player.openInventory(new CoreGui(plugin, core, CoreTab.FINANCE).getInventory());
     }
@@ -790,6 +916,8 @@ public class CoreGui extends CustomHolder {
             core.setLevel(nextLevel);
             plugin.getCoreManager().saveAllCores();
 
+            com.truongcm.territorydefense.feature.core.HologramManager.updateCoreHologram(core);
+
             player.sendMessage(ChatColor.GREEN + "Chúc mừng! Lõi Lãnh thổ của bạn đã được nâng cấp lên Cấp " + nextLevel);
             player.sendMessage(ChatColor.GRAY + "Chi phí thanh toán: " + ChatColor.GOLD + String.format("%,.0f", moneyCost) + " Xu " + ChatColor.GRAY + "& " + ChatColor.AQUA + shardCost + " Shards");
             player.playSound(player.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
@@ -814,20 +942,7 @@ public class CoreGui extends CustomHolder {
         return material != null && (material.isEdible() || material == Material.WHEAT || material == Material.PUMPKIN);
     }
 
-    private double getFoodFepValue(Material material) {
-        return switch (material) {
-            case WHEAT -> 5.0;
-            case PUMPKIN -> 8.0;
-            case BREAD -> 15.0;
-            case CARROT, POTATO -> 4.0;
-            case BAKED_POTATO -> 10.0;
-            case COOKED_BEEF, COOKED_PORKCHOP -> 25.0;
-            case COOKED_CHICKEN -> 18.0;
-            case APPLE -> 10.0;
-            case GOLDEN_APPLE -> 50.0;
-            default -> 5.0;
-        };
-    }
+
 
     private boolean isRaidActive(TerritoryCore core) {
         if (plugin.getRaidSession() == null || core == null) return false;
@@ -891,13 +1006,13 @@ public class CoreGui extends CustomHolder {
 
     private double getTowerCost(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType type) {
         return switch (type) {
-            case ARROW -> 60000.0;
-            case LIGHTNING -> 90000.0;
-            case FIRE -> 100000.0;
-            case FROST -> 80000.0;
-            case ARTILLERY -> 130000.0;
-            case HEALING -> 110000.0;
-            case SPELL -> 140000.0;
+            case ARROW -> 30000.0;
+            case LIGHTNING -> 45000.0;
+            case FIRE -> 50000.0;
+            case FROST -> 40000.0;
+            case ARTILLERY -> 65000.0;
+            case HEALING -> 55000.0;
+            case SPELL -> 70000.0;
         };
     }
 
@@ -1004,6 +1119,39 @@ public class CoreGui extends CustomHolder {
             item.setItemMeta(meta);
         }
         return item;
+    }
+
+    private void handleReactivateCore(Player player) {
+        if (!core.isDisabled()) {
+            player.sendMessage(ChatColor.GREEN + "Lõi hiện tại không bị vô hiệu hóa.");
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            return;
+        }
+
+        if (!core.getOwnerUUID().equals(player.getUniqueId())) {
+            player.sendMessage(ChatColor.RED + "Bạn không phải chủ sở hữu Lõi để kích hoạt lại!");
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            return;
+        }
+
+        double cost = core.getReactivateCost();
+        if (!plugin.getVaultEconomy().has(player, cost)) {
+            player.sendMessage(ChatColor.RED + "Bạn không đủ Xu để kích hoạt lại Lõi! Cần: " + String.format("%,.0f", cost) + " Xu.");
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            return;
+        }
+
+        plugin.getVaultEconomy().withdrawPlayer(player, cost);
+        core.setDisabledUntil(0);
+        core.revertHealth();
+        plugin.getCoreManager().saveAllCores();
+
+        com.truongcm.territorydefense.feature.core.HologramManager.updateCoreHologram(core);
+
+        player.sendMessage(ChatColor.GREEN + "Kích hoạt lại Lõi Lãnh Thổ thành công! Hệ thống phòng thủ và sản xuất đã phục hồi.");
+        player.playSound(player.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
+
+        player.openInventory(new CoreGui(plugin, core, CoreTab.LOGISTICS).getInventory());
     }
 
     public TerritoryCore getCore() { return core; }

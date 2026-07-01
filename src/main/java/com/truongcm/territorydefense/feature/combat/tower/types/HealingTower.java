@@ -46,12 +46,12 @@ public class HealingTower extends Tower {
     public double getDamage() {
         // Tịnh tiến năng lực trị thương: 15 -> 22 -> 33 -> 45 -> 60 HP hồi phục theo cấp độ
         return switch (level) {
-            case 1 -> 15.0;
-            case 2 -> 22.0;
-            case 3 -> 33.0;
-            case 4 -> 45.0;
-            case 5 -> 60.0;
-            default -> 15.0;
+            case 1 -> 4.0;
+            case 2 -> 6.0;
+            case 3 -> 8.0;
+            case 4 -> 10.0;
+            case 5 -> 12.0;
+            default -> 4.0;
         };
     }
 

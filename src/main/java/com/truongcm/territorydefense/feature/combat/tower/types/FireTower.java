@@ -44,12 +44,12 @@ public class FireTower extends Tower {
     public double getDamage() {
         // Tịnh tiến sát thương: 20.0 -> 30.0 -> 44.0 -> 60.0 -> 80.0 DMG theo cấp độ
         return switch (level) {
-            case 1 -> 20.0;
-            case 2 -> 30.0;
-            case 3 -> 44.0;
-            case 4 -> 60.0;
-            case 5 -> 80.0;
-            default -> 20.0;
+            case 1 -> 4.0;
+            case 2 -> 6.0;
+            case 3 -> 8.0;
+            case 4 -> 10.0;
+            case 5 -> 12.0;
+            default -> 4.0;
         };
     }
 
@@ -70,6 +70,9 @@ public class FireTower extends Tower {
         fireball.setMetadata("td_tower_projectile", new FixedMetadataValue(TerritoryDefense.getInstance(), true));
 
         // Gây sát thương và thiêu đốt
+        if (core != null && core.getOwnerUUID() != null) {
+            target.setMetadata("td_last_tower_damager_uuid", new FixedMetadataValue(TerritoryDefense.getInstance(), core.getOwnerUUID().toString()));
+        }
         target.damage(finalDamage);
         target.setFireTicks(80); // Đốt cháy trong 4 giây (20 ticks = 1s)
         target.setMetadata("td_last_damaged_by_tower", new FixedMetadataValue(TerritoryDefense.getInstance(), true));

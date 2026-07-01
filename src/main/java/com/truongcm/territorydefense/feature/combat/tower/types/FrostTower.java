@@ -47,12 +47,12 @@ public class FrostTower extends Tower {
     public double getDamage() {
         // Tịnh tiến sát thương: 10.0 -> 15.0 -> 22.0 -> 30.0 -> 40.0 DMG theo cấp độ
         return switch (level) {
-            case 1 -> 10.0;
-            case 2 -> 15.0;
-            case 3 -> 22.0;
-            case 4 -> 30.0;
-            case 5 -> 40.0;
-            default -> 10.0;
+            case 1 -> 4.0;
+            case 2 -> 6.0;
+            case 3 -> 8.0;
+            case 4 -> 10.0;
+            case 5 -> 12.0;
+            default -> 4.0;
         };
     }
 
@@ -70,6 +70,9 @@ public class FrostTower extends Tower {
         drawFrostBeam(origin, target.getLocation().add(0, 1.0, 0));
 
         // Gây sát thương băng giá
+        if (core != null && core.getOwnerUUID() != null) {
+            target.setMetadata("td_last_tower_damager_uuid", new FixedMetadataValue(TerritoryDefense.getInstance(), core.getOwnerUUID().toString()));
+        }
         target.damage(finalDamage);
         target.setMetadata("td_last_damaged_by_tower", new FixedMetadataValue(TerritoryDefense.getInstance(), true));
 

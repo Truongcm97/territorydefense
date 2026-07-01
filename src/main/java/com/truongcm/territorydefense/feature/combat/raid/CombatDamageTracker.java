@@ -49,29 +49,57 @@ public class CombatDamageTracker implements Listener {
      * Ghi nhận và cộng dồn từng điểm sát thương thực tế gây ra lên quái Raid.
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onRaidMobDamage(EntityDamageByEntityEvent event) {
+    public void onRaidMobDamage(org.bukkit.event.entity.EntityDamageEvent event) {
         UUID mobId = event.getEntity().getUniqueId();
         if (!mobMaxHpRegistry.containsKey(mobId)) return;
 
-        Entity damager = event.getDamager();
         Player player = null;
 
-        // 1. Nếu người chơi chém/bắn trực tiếp
-        if (damager instanceof Player) {
-            player = (Player) damager;
-        }
-        // 2. Nếu là mũi tên do người chơi bắn ra
-        else if (damager instanceof Arrow arrow && arrow.getShooter() instanceof Player) {
-            player = (Player) arrow.getShooter();
+        // 1. Kiểm tra nếu là EntityDamageByEntityEvent để trích xuất người chơi hoặc mũi tên bắn ra
+        if (event instanceof EntityDamageByEntityEvent entityEvent) {
+            Entity damager = entityEvent.getDamager();
+            if (damager instanceof Player) {
+                player = (Player) damager;
+            } else if (damager instanceof Arrow arrow && arrow.getShooter() instanceof Player) {
+                player = (Player) arrow.getShooter();
+            } else if (damager.hasMetadata("td_tower_owner_uuid")) {
+                try {
+                    String uuidStr = damager.getMetadata("td_tower_owner_uuid").get(0).asString();
+                    player = Bukkit.getPlayer(UUID.fromString(uuidStr));
+                } catch (Exception ignored) {}
+            }
         }
 
-        if (player != null) {
+        // 2. Kiểm tra nếu thực thể quái bị đánh dấu bởi tháp bắn trực tiếp qua code trước đó
+        if (player == null && event.getEntity().hasMetadata("td_last_tower_damager_uuid")) {
+            try {
+                String uuidStr = event.getEntity().getMetadata("td_last_tower_damager_uuid").get(0).asString();
+                player = Bukkit.getPlayer(UUID.fromString(uuidStr));
+            } catch (Exception ignored) {}
+            // Xóa nhãn để tránh ảnh hưởng các đợt gây sát thương khác
+            event.getEntity().removeMetadata("td_last_tower_damager_uuid", com.truongcm.territorydefense.TerritoryDefense.getInstance());
+        }
+
+        if (player != null && player.isOnline()) {
             UUID pId = player.getUniqueId();
             Map<UUID, Double> breakdowns = damageBreakdowns.get(mobId);
             if (breakdowns != null) {
                 double currentDamage = breakdowns.getOrDefault(pId, 0.0);
-                // Ghi vết Final Damage (sau khi đã tính giáp và hiệu ứng của Minecraft)
-                breakdowns.put(pId, currentDamage + event.getFinalDamage());
+                double damageToAdd = event.getFinalDamage();
+                
+                // Hồi phục sát thương ảo tỉ lệ nghịch để cộng dồn chính xác cho người chơi
+                Entity entity = event.getEntity();
+                if (entity.hasMetadata("td_intended_max_hp") && entity.hasMetadata("td_actual_max_hp")) {
+                    try {
+                        double intended = entity.getMetadata("td_intended_max_hp").get(0).asDouble();
+                        double actual = entity.getMetadata("td_actual_max_hp").get(0).asDouble();
+                        if (actual > 0) {
+                            damageToAdd = damageToAdd * (intended / actual);
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                breakdowns.put(pId, currentDamage + damageToAdd);
             }
         }
     }
@@ -93,6 +121,9 @@ public class CombatDamageTracker implements Listener {
         // để phòng chống người chơi lợi dụng farm lậu Shard khi bị bang hội đối địch hãm hại
         // Ở đây có thể tích hợp kiểm tra: if (plugin.getSiegeSession().isSiegeActive()) ...
 
+        var plugin = com.truongcm.territorydefense.TerritoryDefense.getInstance();
+        double minContribution = plugin.getConfig().getDouble("raid-settings.min-damage-contribution-percent", 30.0);
+
         for (Map.Entry<UUID, Double> entry : breakdowns.entrySet()) {
             Player player = Bukkit.getPlayer(entry.getKey());
             if (player == null || !player.isOnline()) continue;
@@ -100,56 +131,96 @@ public class CombatDamageTracker implements Listener {
             double damageDealt = entry.getValue();
             double contributionPercent = (damageDealt / maxHp) * 100.0;
 
-            // KIỂM SOÁT NGHIÊM NGẶT AN TI-AFK: Chỉ trao thưởng Shard khi đóng góp sát thương ≥ 30%
-            if (contributionPercent >= 30.0) {
-                // Lấy số lần call raid để scale drop +10% mỗi lần
-                int callCount = event.getEntity().getMetadata("td_raid_call_count").stream().findFirst().map(m -> m.asInt()).orElse(0);
-                double dropScale = Math.pow(1.10, callCount);
+            // KIỂM SOÁT NGHIÊM NGẶT AN TI-AFK: Chỉ trao thưởng khi đóng góp sát thương đạt ngưỡng cấu hình
+            if (contributionPercent >= minContribution) {
+                double coinMultiplier = 1.0;
+                int bonusShards = 0;
+                
+                com.truongcm.territorydefense.feature.core.TerritoryCore nearestCore = null;
+                if (plugin.getCoreManager() != null) {
+                    nearestCore = plugin.getCoreManager().getCoreByLocationRange(event.getEntity().getLocation());
+                }
 
-                // 1. Phân phát mảnh vỡ Shard độc bản có gắn thẻ PDC chống nhân bản lậu
-                int baseShard = (event.getEntity().getType() == org.bukkit.entity.EntityType.GIANT) ? 15 : 1;
-                int shardAmount = (int) Math.max(1.0, Math.round(baseShard * dropScale));
-                ItemStack secureShard = createSecureShard(shardAmount);
-                player.getInventory().addItem(secureShard);
+                if (nearestCore != null) {
+                    // 1. Áp dụng thưởng tiền xu từ hợp nhất lãnh thổ (Ally land merge boost +1% reward per merged core)
+                    if (nearestCore.isMerged() && nearestCore.getMergeCount() > 0) {
+                        coinMultiplier += 0.01 * nearestCore.getMergeCount();
+                    }
+                    
+                    // 2. Cơ chế tăng thưởng theo số lượt raid hoàn thành (completedRaids) của Lõi
+                    int completedRaids = nearestCore.getCompletedRaids();
+                    double coinIncreasePerRaid = plugin.getConfig().getDouble("raid-settings.reward-scaling.coin-increase-per-raid", 0.02);
+                    boolean scaleWithDifficulty = plugin.getConfig().getBoolean("raid-settings.reward-scaling.scale-coins-with-difficulty-multiplier", true);
+                    
+                    if (scaleWithDifficulty) {
+                        coinMultiplier *= nearestCore.getPermanentRaidMultiplier();
+                    } else {
+                        coinMultiplier += coinIncreasePerRaid * completedRaids;
+                    }
+                    
+                    int shardsInterval = plugin.getConfig().getInt("raid-settings.reward-scaling.shards-bonus-interval", 10);
+                    if (shardsInterval > 0 && completedRaids > 0) {
+                        bonusShards += (completedRaids / shardsInterval);
+                    }
+                }
 
-                // 2. Trao thưởng tiền xu trực tiếp qua ví Vault Kinh tế
+                // 3. Tính toán tỉ lệ và số lượng rơi Shard theo quy định mới
+                boolean isGiant = (event.getEntity().getType() == org.bukkit.entity.EntityType.GIANT);
+                double dropRate = isGiant ? 0.60 : 0.20;
+                int shardAmount = isGiant ? 4 : 1;
+                
+                // Cộng thêm Shard thưởng cố định từ lượt raid hoàn thành cao
+                shardAmount += bonusShards;
+                
+                boolean shardDropped = Math.random() < dropRate;
+
+                if (shardDropped) {
+                    ItemStack secureShard = com.truongcm.territorydefense.feature.core.ui.CoreGui.createSecureShard(shardAmount);
+                    player.getInventory().addItem(secureShard);
+                }
+
+                // 4. Trao thưởng tiền xu trực tiếp qua ví Vault Kinh tế
                 double baseCoin = getCoinRewardForType(event.getEntity().getType());
-                double coinAmount = Math.round(baseCoin * dropScale);
-                VaultHook.deposit(player, coinAmount);
+                double finalCoin = baseCoin * coinMultiplier;
+                VaultHook.deposit(player, finalCoin);
 
                 player.sendMessage(ChatColor.GREEN + "[Chiến công] Đạt yêu cầu đóng góp phòng thủ: " +
-                        ChatColor.YELLOW + String.format("%.1f", contributionPercent) + "% (Drops x" + String.format("%.2f", dropScale) + ")");
-                player.sendMessage(ChatColor.GREEN + " Bạn được nhận: " + ChatColor.AQUA + shardAmount +
-                        " Shards" + ChatColor.GREEN + " & " + ChatColor.GOLD + coinAmount + " Xu.");
-
-                player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
+                        ChatColor.YELLOW + String.format("%.1f", contributionPercent) + "%");
+                
+                if (shardDropped) {
+                    player.sendMessage(ChatColor.GREEN + " Bạn được nhận: " + ChatColor.AQUA + shardAmount +
+                            " Shards" + ChatColor.GREEN + " & " + ChatColor.GOLD + String.format("%.1f", finalCoin) + " Xu.");
+                    player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
+                } else {
+                    player.sendMessage(ChatColor.YELLOW + " Rất tiếc, bạn không trúng tỉ lệ rơi Shard lần này! Bạn nhận được " +
+                            ChatColor.GOLD + String.format("%.1f", finalCoin) + " Xu.");
+                    player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.0f);
+                }
             } else {
-                player.sendMessage(ChatColor.RED + "[Cảnh báo] Đóng góp của bạn không đạt ngưỡng tối thiểu 30% để nhận Shard " +
+                player.sendMessage(ChatColor.RED + "[Cảnh báo] Đóng góp của bạn không đạt ngưỡng tối thiểu " + 
+                        String.format("%.1f", minContribution) + "% để nhận thưởng " +
                         "(Thực tế đạt: " + String.format("%.1f", contributionPercent) + "%). Hãy chủ động chiến đấu!");
                 player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
             }
         }
     }
 
-    /**
-     * Tạo nguyên liệu nâng cấp Shard độc bản được ký băm điện tử PDC, ngăn chặn tuyệt đối duplicate.
-     */
-    private ItemStack createSecureShard(int amount) {
-        ItemStack shard = new ItemStack(Material.PRISMARINE_SHARD, amount);
-        ItemMeta meta = shard.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(ChatColor.AQUA + "Mảnh Vỡ Không Gian (Shard)");
-            meta.setLore(Arrays.asList(
-                    ChatColor.GRAY + "Nguyên liệu nâng cấp hệ thống lãnh thổ.",
-                    ChatColor.RED + "Sản phẩm bảo mật chính chủ - Đăng ký chống gian lận"
-            ));
+    // Phương thức cũ createSecureShard đã được chuyển giao vào CoreGui.createSecureShard để thống nhất định dạng stack được.
 
-            // Mã hóa chữ ký số băm độc bản dựa trên UUID và dấu mốc thời gian thực
-            String secureId = "TD-ITEM-" + UUID.randomUUID() + "-" + System.currentTimeMillis();
-            meta.getPersistentDataContainer().set(PDCKeys.SECURE_ITEM_ID, PersistentDataType.STRING, secureId);
-            shard.setItemMeta(meta);
+    /**
+     * Ngăn chặn quái công thành (Raid Mob) bị thiêu cháy tự nhiên dưới ánh nắng mặt trời.
+     * Vẫn cho phép quái bị cháy bởi dung nham, lửa từ block hoặc đòn đánh Fire Aspect/mũi tên lửa.
+     */
+    @EventHandler
+    public void onRaidMobCombust(org.bukkit.event.entity.EntityCombustEvent event) {
+        if (event instanceof org.bukkit.event.entity.EntityCombustByEntityEvent || 
+            event instanceof org.bukkit.event.entity.EntityCombustByBlockEvent) {
+            return;
         }
-        return shard;
+        boolean isRaidMob = event.getEntity().hasMetadata("td_raid_mob") || (PDCKeys.RAID_MOB_TAG != null && event.getEntity().getPersistentDataContainer().has(PDCKeys.RAID_MOB_TAG, PersistentDataType.BYTE));
+        if (isRaidMob) {
+            event.setCancelled(true);
+        }
     }
 
     private double getCoinRewardForType(org.bukkit.entity.EntityType type) {

@@ -39,19 +39,19 @@ public class ArrowTower extends Tower {
 
     @Override
     public int getAttackSpeedTicks() {
-        return 20; // 1.0 giây
+        return 40; // Giãn cách bắn 2.0 giây (40 ticks)
     }
 
     @Override
     public double getDamage() {
         // Tịnh tiến sát thương: 15 -> 22 -> 33 -> 45 -> 60 DMG theo cấp độ
         return switch (level) {
-            case 1 -> 15.0;
-            case 2 -> 22.0;
-            case 3 -> 33.0;
-            case 4 -> 45.0;
-            case 5 -> 60.0;
-            default -> 15.0;
+            case 1 -> 5.0;
+            case 2 -> 7.0;
+            case 3 -> 9.0;
+            case 4 -> 12.0;
+            case 5 -> 15.0;
+            default -> 5.0;
         };
     }
 
@@ -72,6 +72,9 @@ public class ArrowTower extends Tower {
         arrow.setVelocity(direction.multiply(2.5)); // Đẩy vận tốc mũi tên bay nhanh mượt
         arrow.setDamage(finalDamage / 4.0); // Cân đối tỉ lệ lực bắn mặc định của Minecraft
         arrow.setMetadata("td_tower_projectile", new FixedMetadataValue(TerritoryDefense.getInstance(), true));
+        if (core != null && core.getOwnerUUID() != null) {
+            arrow.setMetadata("td_tower_owner_uuid", new FixedMetadataValue(TerritoryDefense.getInstance(), core.getOwnerUUID().toString()));
+        }
 
         origin.getWorld().playSound(origin, Sound.ENTITY_SKELETON_SHOOT, 1.0f, 1.2f);
 
@@ -83,14 +86,17 @@ public class ArrowTower extends Tower {
             if (pierceCount >= 3) break; // Giới hạn xuyên tối đa 3 mục tiêu theo GDD
             if (!(entity instanceof LivingEntity living)) continue;
 
-            // Sử dụng bộ lọc thông minh kế thừa trực tiếp từ lớp cha Tower
+            boolean isRaidMob = living.hasMetadata("td_raid_mob") || (com.truongcm.territorydefense.feature.core.PDCKeys.RAID_MOB_TAG != null && living.getPersistentDataContainer().has(com.truongcm.territorydefense.feature.core.PDCKeys.RAID_MOB_TAG, org.bukkit.persistence.PersistentDataType.BYTE));
             boolean isEnemy = isValidTarget(living, core, TerritoryDefense.getInstance())
-                    || (living.hasMetadata("td_raid_mob") && !living.isDead() && living.isValid());
+                    || (isRaidMob && !living.isDead() && living.isValid());
 
             if (isEnemy) {
                 // Thẩm định khoảng cách vuông góc ngắn nhất từ mục tiêu tới tia bắn
                 double distanceToRay = getDistanceToRay(living.getLocation().toVector(), origin.toVector(), direction);
                 if (distanceToRay <= 1.4) { // Phạm vi hộp va chạm quét tia trúng đích
+                    if (core != null && core.getOwnerUUID() != null) {
+                        living.setMetadata("td_last_tower_damager_uuid", new FixedMetadataValue(TerritoryDefense.getInstance(), core.getOwnerUUID().toString()));
+                    }
                     living.damage(finalDamage);
                     living.getWorld().spawnParticle(org.bukkit.Particle.DAMAGE_INDICATOR, living.getLocation().add(0, 1.0, 0), 2);
                     living.setMetadata("td_last_damaged_by_tower", new FixedMetadataValue(TerritoryDefense.getInstance(), true));

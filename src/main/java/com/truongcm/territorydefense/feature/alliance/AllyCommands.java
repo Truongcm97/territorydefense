@@ -103,6 +103,14 @@ public class AllyCommands implements CommandExecutor {
                 handleDisbandAlliance(player);
                 break;
 
+            case "merge":
+                if (args.length >= 2 && args[1].equalsIgnoreCase("confirm")) {
+                    handleMergeConfirm(player);
+                } else {
+                    handleMergeRequest(player);
+                }
+                break;
+
             case "help":
             default:
                 showHelp(player);
@@ -231,19 +239,12 @@ public class AllyCommands implements CommandExecutor {
 
     private void handleOpenGuildChest(Player player) {
         String allyId = plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId());
-        if (allyId == null) {
-            player.sendMessage(ChatColor.RED + "Bạn không thuộc Liên minh nào! Hãy tạo hoặc gia nhập Liên minh trước.");
-            return;
-        }
+        if (allyId == null) return;
 
-        com.truongcm.territorydefense.feature.alliance.Alliance alliance = plugin.getAllianceManager().getAlliance(allyId);
-        if (alliance == null) {
-            player.sendMessage(ChatColor.RED + "Liên minh của bạn không tồn tại trong hệ thống. Vui lòng liên hệ Admin!");
-            return;
+        Alliance alliance = plugin.getAllianceManager().getAlliance(allyId);
+        if (alliance != null) {
+            player.performCommand("chest " + alliance.getName());
         }
-
-        // Gọi đúng API ServerChestHook thay vì dùng performCommand của plugin ngoài
-        com.truongcm.territorydefense.hook.ServerChestHook.openGuildChest(player, allyId, alliance.getName());
     }
 
     private void handleLeaveAlliance(Player player) {
@@ -523,6 +524,75 @@ public class AllyCommands implements CommandExecutor {
         }
     }
 
+    private void handleMergeRequest(Player player) {
+        String allyId = plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId());
+        if (allyId == null) {
+            player.sendMessage(ChatColor.RED + "Bạn cần tham gia một Liên minh trước khi thực hiện hợp nhất!");
+            return;
+        }
+
+        Alliance alliance = plugin.getAllianceManager().getAlliance(allyId);
+        if (alliance == null || !alliance.getLeader().equals(player.getUniqueId())) {
+            player.sendMessage(ChatColor.RED + "Chỉ có Thủ lĩnh Liên minh (Leader) mới có quyền hợp nhất lãnh thổ!");
+            return;
+        }
+
+        List<TerritoryCore> coresToMerge = new ArrayList<>();
+        if (plugin.getCoreManager() != null) {
+            for (TerritoryCore core : plugin.getCoreManager().getAllActiveCores()) {
+                if (allyId.equalsIgnoreCase(core.getAllyId())) {
+                    coresToMerge.add(core);
+                }
+            }
+        }
+
+        if (coresToMerge.size() < 2) {
+            player.sendMessage(ChatColor.RED + "Yêu cầu ít nhất 2 Lõi Lãnh Thổ trong Liên minh hoạt động để hợp nhất! Hiện tại chỉ có " + coresToMerge.size() + ".");
+            return;
+        }
+
+        player.sendMessage(ChatColor.GOLD + "=== CHUẨN BỊ HỢP NHẤT LÃNH THỔ LIÊN MINH ===");
+        player.sendMessage(ChatColor.YELLOW + "Số lượng Lõi hợp nhất: " + coresToMerge.size());
+        player.sendMessage(ChatColor.YELLOW + "Các hiệu ứng kích hoạt sau khi hợp nhất:");
+        player.sendMessage(ChatColor.GREEN + " - Cộng dồn diện tích lãnh thổ (Tập hợp ranh giới thống nhất) và +5% diện tích mỗi Lõi.");
+        player.sendMessage(ChatColor.GREEN + " - Tăng 5% Lá chắn tối đa (Max Shield) của mỗi Lõi.");
+        player.sendMessage(ChatColor.GREEN + " - Tăng 5% Sát thương trụ canh (Tower Damage) thuộc các Lõi này.");
+        player.sendMessage(ChatColor.GREEN + " - Tăng 5% Dung tích bình nạp PEP (Max FEP Pool) của mỗi Lõi.");
+        player.sendMessage(ChatColor.GREEN + " - Tăng 5% Hiệu suất nạp PEP khi nạp thức ăn (cả người chơi và nông dân).");
+        player.sendMessage(ChatColor.GREEN + " - Tăng 1% Tiền thưởng Gold (Vault) từ tiêu diệt quái PvE Raid.");
+        player.sendMessage(ChatColor.GOLD + "Để thực thi hợp nhất, hãy gõ lệnh: " + ChatColor.LIGHT_PURPLE + "/ally merge confirm");
+    }
+
+    private void handleMergeConfirm(Player player) {
+        String allyId = plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId());
+        if (allyId == null) {
+            player.sendMessage(ChatColor.RED + "Bạn cần tham gia một Liên minh trước khi thực hiện hợp nhất!");
+            return;
+        }
+
+        Alliance alliance = plugin.getAllianceManager().getAlliance(allyId);
+        if (alliance == null || !alliance.getLeader().equals(player.getUniqueId())) {
+            player.sendMessage(ChatColor.RED + "Chỉ có Thủ lĩnh Liên minh (Leader) mới có quyền hợp nhất lãnh thổ!");
+            return;
+        }
+
+        List<TerritoryCore> coresToMerge = new ArrayList<>();
+        if (plugin.getCoreManager() != null) {
+            for (TerritoryCore core : plugin.getCoreManager().getAllActiveCores()) {
+                if (allyId.equalsIgnoreCase(core.getAllyId())) {
+                    coresToMerge.add(core);
+                }
+            }
+        }
+
+        if (coresToMerge.size() < 2) {
+            player.sendMessage(ChatColor.RED + "Yêu cầu ít nhất 2 Lõi Lãnh Thổ trong Liên minh hoạt động để hợp nhất! Hiện tại chỉ có " + coresToMerge.size() + ".");
+            return;
+        }
+
+        plugin.getAllianceManager().mergeTerritories(allyId, coresToMerge);
+    }
+
     private void showHelp(Player player) {
         player.sendMessage(ChatColor.GOLD + "========== NGOẠI GIAO LIÊN MINH (ALLY HELP) ==========");
         player.sendMessage(ChatColor.YELLOW + "/ally : " + ChatColor.WHITE + "Mở GUI Quản trị bang hội.");
@@ -534,6 +604,7 @@ public class AllyCommands implements CommandExecutor {
         player.sendMessage(ChatColor.YELLOW + "/ally declare <tên> : " + ChatColor.WHITE + "Tuyên chiến quốc gia/cá nhân theo Tên.");
         player.sendMessage(ChatColor.YELLOW + "/ally leave : " + ChatColor.WHITE + "Rời khỏi Liên minh hiện tại.");
         player.sendMessage(ChatColor.YELLOW + "/ally disband : " + ChatColor.WHITE + "Giải tán Liên minh (Chỉ Thủ lĩnh).");
+        player.sendMessage(ChatColor.YELLOW + "/ally merge : " + ChatColor.WHITE + "Hợp nhất lãnh thổ các thành viên (Chỉ Thủ lĩnh).");
         player.sendMessage(ChatColor.GOLD + "=======================================================");
     }
 }

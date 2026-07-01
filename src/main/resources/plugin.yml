@@ -36,7 +36,7 @@ commands:
       - core
       - lanhtho
     permission: territorydefense.use
-    usage: "/territory [boundary|accepttax|migrate|getstarter|help]"
+    usage: "/territory [boundary|accepttax|migrate|getstarter|recall|help|resetstarter <player>|resetdifficulty <player>|recall <player>|getcore|rebuildholograms]"
   ally:
     description: "Quản trị liên minh và các tính năng tương tác PvP."
     aliases:
@@ -44,7 +44,7 @@ commands:
       - alliance
       - lienminh
     permission: territorydefense.use
-    usage: "/ally [create|invite|kick|chat|chest|declare|leave|disband|help]"
+    usage: "/ally [create <tên>|invite <tên>|kick <tên>|chat <nội dung>|chest|declare <tên>|leave|disband|merge|help]"
 
 # ------------------------------------------------------------------------------
 # PHÂN QUYỀN HỆ THỐNG (PERMISSIONS)

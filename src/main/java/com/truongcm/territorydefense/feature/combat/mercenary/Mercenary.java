@@ -59,7 +59,33 @@ public class Mercenary {
 
         // Cập nhật trực tiếp lên thực thể sống (Bukkit entity)
         if (entity != null && entity.isValid()) {
-            var hpAttr = entity.getAttribute(Registry.ATTRIBUTE.get(NamespacedKey.minecraft("generic.max_health")));
+            org.bukkit.attribute.AttributeInstance hpAttr = null;
+            try {
+                // 1. Thử dùng Reflection để lấy Enum Attribute cho cả hai phiên bản cũ và mới
+                java.lang.reflect.Field field;
+                try {
+                    field = org.bukkit.attribute.Attribute.class.getField("GENERIC_MAX_HEALTH");
+                } catch (NoSuchFieldException e) {
+                    field = org.bukkit.attribute.Attribute.class.getField("MAX_HEALTH");
+                }
+                org.bukkit.attribute.Attribute attrEnum = (org.bukkit.attribute.Attribute) field.get(null);
+                hpAttr = entity.getAttribute(attrEnum);
+            } catch (Exception ignored) {}
+
+            if (hpAttr == null) {
+                try {
+                    // 2. Thử dùng Registry cũ (1.20.4-1.20.6)
+                    hpAttr = entity.getAttribute(Registry.ATTRIBUTE.get(NamespacedKey.minecraft("generic.max_health")));
+                } catch (Exception ignored) {}
+            }
+
+            if (hpAttr == null) {
+                try {
+                    // 3. Thử dùng Registry mới (1.21+)
+                    hpAttr = entity.getAttribute(Registry.ATTRIBUTE.get(NamespacedKey.minecraft("max_health")));
+                } catch (Exception ignored) {}
+            }
+
             if (hpAttr != null) {
                 hpAttr.setBaseValue(this.maxHp);
                 entity.setHealth(this.maxHp);

@@ -10,6 +10,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -64,17 +65,280 @@ public class CoreManager implements Listener {
             plugin.getDataFolder().mkdirs();
         }
         this.coresFile = new File(plugin.getDataFolder(), "cores.yml");
-        if (!coresFile.exists()) {
+        this.coresConfig = new YamlConfiguration();
+        if (coresFile.exists()) {
             try {
-                coresFile.createNewFile();
-            } catch (IOException e) {
-                plugin.getLogger().severe("[TD] Không thể tạo tệp cores.yml: " + e.getMessage());
-            }
+                this.coresConfig.load(coresFile);
+            } catch (Exception ignored) {}
         }
-        this.coresConfig = YamlConfiguration.loadConfiguration(coresFile);
 
         Bukkit.getScheduler().runTaskLater(plugin, this::wrapTowerPlaceListener, 1L);
     }
+
+    private File getUserDataFolder() {
+        File folder = new File(plugin.getDataFolder(), "userdata");
+        if (!folder.exists()) {
+            folder.mkdirs();
+        }
+        return folder;
+    }
+
+    private File getPlayerFile(UUID ownerUUID) {
+        return new File(getUserDataFolder(), ownerUUID.toString() + ".yml");
+    }
+
+    private File getPlayerBackupFile(UUID ownerUUID) {
+        return new File(getUserDataFolder(), ownerUUID.toString() + ".yml.bak");
+    }
+
+    private File getPlayerTempFile(UUID ownerUUID) {
+        return new File(getUserDataFolder(), ownerUUID.toString() + ".yml.tmp");
+    }
+
+    private YamlConfiguration loadPlayerConfig(UUID ownerUUID) {
+        File file = getPlayerFile(ownerUUID);
+        File backup = getPlayerBackupFile(ownerUUID);
+        YamlConfiguration config = new YamlConfiguration();
+
+        if (file.exists() && file.length() > 0) {
+            try {
+                config.load(file);
+                if (config.getKeys(false).isEmpty() && file.length() > 20) {
+                    throw new Exception("Config has size but parsed 0 keys (corrupted)");
+                }
+                return config;
+            } catch (Exception e) {
+                plugin.getLogger().severe("[TD] Tep du lieu cua nguoi choi " + ownerUUID + " bi loi! Dang co gang khoi phuc tu file sao luu...");
+                if (backup.exists() && backup.length() > 0) {
+                    try {
+                        config.load(backup);
+                        java.nio.file.Files.copy(backup.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        plugin.getLogger().info("[TD] Khoi phuc thanh cong du lieu tu file .bak cua " + ownerUUID);
+                        return config;
+                    } catch (Exception ex) {
+                        plugin.getLogger().severe("[TD] Khoi phuc tu .bak that bai cho " + ownerUUID + ": " + ex.getMessage());
+                    }
+                }
+            }
+        }
+        return config;
+    }
+
+    private void savePlayerConfig(UUID ownerUUID, YamlConfiguration config) {
+        File file = getPlayerFile(ownerUUID);
+        File temp = getPlayerTempFile(ownerUUID);
+        File backup = getPlayerBackupFile(ownerUUID);
+
+        try {
+            config.save(temp);
+            if (temp.exists() && temp.length() > 0) {
+                if (file.exists() && file.length() > 0) {
+                    try {
+                        java.nio.file.Files.copy(file.toPath(), backup.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    } catch (IOException e) {
+                        plugin.getLogger().warning("[TD] Khong the tao file sao luu cho " + ownerUUID + ": " + e.getMessage());
+                    }
+                }
+                try {
+                    java.nio.file.Files.move(temp.toPath(), file.toPath(), 
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING, 
+                            java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                } catch (IOException e) {
+                    java.nio.file.Files.move(temp.toPath(), file.toPath(), 
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            } else {
+                plugin.getLogger().severe("[TD] Khong the luu file cho " + ownerUUID + " vi file tam rong hoac loi!");
+            }
+        } catch (Exception e) {
+            plugin.getLogger().severe("[TD] Loi khi luu du lieu cho " + ownerUUID + ": " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private void saveCoreToConfig(YamlConfiguration config, TerritoryCore core) {
+        String path = "cores." + core.getCoreId().toString();
+        Location loc = core.getLocation();
+
+        config.set(path + ".world", loc.getWorld().getName());
+        config.set(path + ".x", loc.getBlockX());
+        config.set(path + ".y", loc.getBlockY());
+        config.set(path + ".z", loc.getBlockZ());
+        config.set(path + ".owner", core.getOwnerUUID().toString());
+        config.set(path + ".level", core.getLevel());
+        config.set(path + ".fep", core.getFep());
+        config.set(path + ".shield", core.getShield());
+        config.set(path + ".ally", getCoreAlliance(core));
+        config.set(path + ".shards", getShards(core.getCoreId()));
+        config.set(path + ".peace_until", getPeaceUntil(core.getCoreId()));
+        config.set(path + ".last_pve_raid", getLastRaidTime(core.getCoreId()));
+        config.set(path + ".permanent_raid_multiplier", core.getPermanentRaidMultiplier());
+        config.set(path + ".is_merged", core.isMerged());
+        config.set(path + ".merge_count", core.getMergeCount());
+        config.set(path + ".completed_raids", core.getCompletedRaids());
+        config.set(path + ".total_raid_count", core.getTotalRaidCount());
+        config.set(path + ".raid_call_count", core.getRaidCallCount());
+        config.set(path + ".disabled_until", core.getDisabledUntil());
+        config.set(path + ".public_blueprint_shared", core.isPublicBlueprintShared());
+        config.set(path + ".builder_level", core.getBuilderLevel());
+        config.set(path + ".blueprint_price", core.getBlueprintPrice());
+        config.set(path + ".selling_slot_index", core.getSellingSlotIndex());
+        
+        for (int s = 0; s < 54; s++) {
+            java.util.List<java.util.Map<String, Object>> blueprintList = new java.util.ArrayList<>();
+            java.util.List<TerritoryCore.BlockSnapshot> slotDesign = core.getBlueprintSlots().get(s);
+            if (slotDesign != null) {
+                for (TerritoryCore.BlockSnapshot snap : slotDesign) {
+                    java.util.Map<String, Object> map = new java.util.HashMap<>();
+                    map.put("relX", snap.relX);
+                    map.put("relY", snap.relY);
+                    map.put("relZ", snap.relZ);
+                    map.put("material", snap.material);
+                    map.put("blockData", snap.blockData);
+                    blueprintList.add(map);
+                }
+            }
+            config.set(path + ".blueprint_slot_bought_" + s, core.getBlueprintSlotsBought().get(s));
+            config.set(path + ".blueprint_name_" + s, core.getBlueprintNames().get(s));
+            config.set(path + ".blueprint_scan_level_" + s, core.getBlueprintScanLevels().get(s));
+            config.set(path + ".blueprint_price_" + s, core.getBlueprintPrices().get(s));
+            config.set(path + ".blueprint_selling_status_" + s, core.getBlueprintSellingStatus().get(s));
+            config.set(path + ".blueprint_slot_" + s, blueprintList);
+        }
+
+        for (int i = 0; i < 54; i++) {
+            config.set(path + ".warehouse." + i, core.getFoodWarehouse().getItem(i));
+            config.set(path + ".rebuild_warehouse." + i, core.getRebuildWarehouse().getItem(i));
+        }
+    }
+
+    private void loadCoresFromConfig(YamlConfiguration config, UUID ownerUUID, int[] loadedCount) {
+        if (!config.contains("cores")) return;
+        ConfigurationSection coresSection = config.getConfigurationSection("cores");
+        if (coresSection == null) return;
+
+        for (String key : coresSection.getKeys(false)) {
+            String path = "cores." + key;
+            try {
+                UUID coreId = UUID.fromString(key);
+                String worldName = config.getString(path + ".world");
+                double x = config.getDouble(path + ".x");
+                double y = config.getDouble(path + ".y");
+                double z = config.getDouble(path + ".z");
+
+                World world = Bukkit.getWorld(worldName);
+                if (world == null) continue;
+
+                Location loc = new Location(world, x, y, z);
+                int level = config.getInt(path + ".level", 1);
+                double fep = config.getDouble(path + ".fep", 100.0);
+                double shield = config.getDouble(path + ".shield", 1000.0);
+                String allyId = config.getString(path + ".ally", null);
+                UUID actualOwnerUUID = ownerUUID;
+                if (config.contains(path + ".owner")) {
+                    actualOwnerUUID = UUID.fromString(config.getString(path + ".owner"));
+                }
+                if (actualOwnerUUID == null) continue;
+
+                TerritoryCore core = new TerritoryCore(coreId, loc, actualOwnerUUID, level, fep, shield, allyId);
+                boolean isMerged = config.getBoolean(path + ".is_merged", false);
+                int mergeCount = config.getInt(path + ".merge_count", 0);
+                core.setMerged(isMerged);
+                core.setMergeCount(mergeCount);
+                int completedRaids = config.getInt(path + ".completed_raids", 0);
+                core.setCompletedRaids(completedRaids);
+                int totalRaidCount = config.getInt(path + ".total_raid_count", 0);
+                core.setTotalRaidCount(totalRaidCount);
+                int raidCallCount = config.getInt(path + ".raid_call_count", 0);
+                core.setRaidCallCount(raidCallCount);
+                long disabledUntil = config.getLong(path + ".disabled_until", 0L);
+                core.setDisabledUntil(disabledUntil);
+                int builderLevel = config.getInt(path + ".builder_level", 1);
+                core.setBuilderLevel(builderLevel);
+                double blueprintPrice = config.getDouble(path + ".blueprint_price", 0.0);
+                core.setBlueprintPrice(blueprintPrice);
+                int sellingSlotIndex = config.getInt(path + ".selling_slot_index", 0);
+                core.setSellingSlotIndex(sellingSlotIndex);
+                
+                if (config.contains(path + ".warehouse")) {
+                    for (int i = 0; i < 54; i++) {
+                        ItemStack item = config.getItemStack(path + ".warehouse." + i);
+                        if (item != null) {
+                            core.getFoodWarehouse().setItem(i, item);
+                        }
+                    }
+                }
+                
+                if (config.contains(path + ".rebuild_warehouse")) {
+                    for (int i = 0; i < 54; i++) {
+                        ItemStack item = config.getItemStack(path + ".rebuild_warehouse." + i);
+                        if (item != null) {
+                            core.getRebuildWarehouse().setItem(i, item);
+                        }
+                    }
+                }
+
+                core.setPublicBlueprintShared(config.getBoolean(path + ".public_blueprint_shared", false));
+                for (int s = 0; s < 54; s++) {
+                    boolean bought = config.getBoolean(path + ".blueprint_slot_bought_" + s, false);
+                    core.getBlueprintSlotsBought().set(s, bought);
+                    String name = config.getString(path + ".blueprint_name_" + s, "Ban thiet ke #" + (s + 1));
+                    core.getBlueprintNames().set(s, name);
+                    int scanLvl = config.getInt(path + ".blueprint_scan_level_" + s, 1);
+                    core.getBlueprintScanLevels().set(s, scanLvl);
+                    double price = config.getDouble(path + ".blueprint_price_" + s, 0.0);
+                    core.getBlueprintPrices().set(s, price);
+                    boolean selling = config.getBoolean(path + ".blueprint_selling_status_" + s, false);
+                    core.getBlueprintSellingStatus().set(s, selling);
+                    if (config.contains(path + ".blueprint_slot_" + s)) {
+                        java.util.List<?> list = config.getList(path + ".blueprint_slot_" + s);
+                        if (list != null) {
+                            java.util.List<TerritoryCore.BlockSnapshot> slotList = core.getBlueprintSlots().get(s);
+                            slotList.clear();
+                            for (Object obj : list) {
+                                if (obj instanceof java.util.Map<?, ?> map) {
+                                    try {
+                                        int relX = ((Number) map.get("relX")).intValue();
+                                        int relY = ((Number) map.get("relY")).intValue();
+                                        int relZ = ((Number) map.get("relZ")).intValue();
+                                        String material = (String) map.get("material");
+                                        String blockData = (String) map.get("blockData");
+                                        slotList.add(new TerritoryCore.BlockSnapshot(relX, relY, relZ, material, blockData));
+                                    } catch (Exception ignored) {}
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (blueprintPrice > 0 && sellingSlotIndex >= 0 && sellingSlotIndex < 54) {
+                    if (core.getBlueprintPrices().get(sellingSlotIndex) == 0.0) {
+                        core.getBlueprintPrices().set(sellingSlotIndex, blueprintPrice);
+                        core.getBlueprintSellingStatus().set(sellingSlotIndex, true);
+                    }
+                }
+                
+                activeCores.put(getBlockAlignedLocation(loc), core);
+
+                int shards = config.getInt(path + ".shards", 0);
+                coreShards.put(coreId, shards);
+
+                long peaceUntil = config.getLong(path + ".peace_until", 0L);
+                corePeaceCooldowns.put(coreId, peaceUntil);
+
+                long lastRaid = config.getLong(path + ".last_pve_raid", 0L);
+                coreLastRaidTimes.put(coreId, lastRaid);
+
+                double permMultiplier = config.getDouble(path + ".permanent_raid_multiplier", 1.0);
+                core.setPermanentRaidMultiplier(permMultiplier);
+
+                loadedCount[0]++;
+            } catch (Exception e) {
+                plugin.getLogger().severe("Loi khi khoi phuc Loi tu cau hinh: " + key);
+            }
+        }
+    }
+
 
     private Location getBlockAlignedLocation(Location loc) {
         if (loc == null) return null;
@@ -84,7 +348,7 @@ public class CoreManager implements Listener {
     public int getCoreRadius(TerritoryCore core) {
         if (core == null) return 16;
         int level = core.getLevel();
-        return switch (level) {
+        int baseRadius = switch (level) {
             case 1 -> 16;
             case 2 -> 24;
             case 3 -> 32;
@@ -92,6 +356,45 @@ public class CoreManager implements Listener {
             case 5 -> 50;
             default -> 16;
         };
+
+        if (core.isMerged() && core.getMergeCount() >= 2) {
+            String allyId = core.getAllyId();
+            if (allyId != null && !allyId.isEmpty()) {
+                double sumSquares = 0;
+                int count = 0;
+                for (TerritoryCore c : activeCores.values()) {
+                    if (allyId.equalsIgnoreCase(c.getAllyId())) {
+                        int r = switch (c.getLevel()) {
+                            case 1 -> 16;
+                            case 2 -> 24;
+                            case 3 -> 32;
+                            case 4 -> 40;
+                            case 5 -> 50;
+                            default -> 16;
+                        };
+                        sumSquares += r * r;
+                        count++;
+                    }
+                }
+                if (count >= 2) {
+                    double areaBoost = 1.0 + 0.05 * count;
+                    return (int) Math.round(Math.sqrt(sumSquares * areaBoost));
+                }
+            }
+        }
+        return baseRadius;
+    }
+
+    public TerritoryCore getCoreById(UUID coreId) {
+        if (coreId == null) return null;
+        for (TerritoryCore core : activeCores.values()) {
+            if (core.getCoreId().equals(coreId)) {
+                syncCoreRadiusField(core);
+                syncCoreAlliance(core);
+                return core;
+            }
+        }
+        return null;
     }
 
     private void syncCoreRadiusField(TerritoryCore core) {
@@ -178,20 +481,11 @@ public class CoreManager implements Listener {
         Location alignedLoc = getBlockAlignedLocation(loc);
         activeCores.put(alignedLoc, core);
 
-        String path = "cores." + core.getCoreId().toString();
-        coresConfig.set(path + ".world", alignedLoc.getWorld().getName());
-        coresConfig.set(path + ".x", alignedLoc.getBlockX());
-        coresConfig.set(path + ".y", alignedLoc.getBlockY());
-        coresConfig.set(path + ".z", alignedLoc.getBlockZ());
-        coresConfig.set(path + ".owner", core.getOwnerUUID().toString());
-        coresConfig.set(path + ".level", core.getLevel());
-        coresConfig.set(path + ".fep", core.getFep());
-        coresConfig.set(path + ".shield", core.getShield());
-        coresConfig.set(path + ".ally", getCoreAlliance(core));
-        coresConfig.set(path + ".shards", getShards(core.getCoreId()));
-        coresConfig.set(path + ".peace_until", getPeaceUntil(core.getCoreId()));
-        coresConfig.set(path + ".last_pve_raid", getLastRaidTime(core.getCoreId()));
-        saveCoresConfig();
+        YamlConfiguration playerConfig = loadPlayerConfig(core.getOwnerUUID());
+        saveCoreToConfig(playerConfig, core);
+        savePlayerConfig(core.getOwnerUUID(), playerConfig);
+        
+        HologramManager.updateCoreHologram(core);
     }
 
     public TerritoryCore getCoreAt(Location loc) {
@@ -317,18 +611,24 @@ public class CoreManager implements Listener {
     }
 
     public ItemStack createCoreItem() {
-        ItemStack starterCore = new ItemStack(Material.CONDUIT);
-        ItemMeta meta = starterCore.getItemMeta();
+        return createCoreItem(1);
+    }
+
+    public ItemStack createCoreItem(int level) {
+        ItemStack coreItem = new ItemStack(Material.CONDUIT);
+        ItemMeta meta = coreItem.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(ChatColor.AQUA + "" + ChatColor.BOLD + "Lõi Năng Lượng Biển");
+            meta.setDisplayName(ChatColor.AQUA + "" + ChatColor.BOLD + "Lõi Năng Lượng Biển" + (level > 1 ? " [Cấp " + level + "]" : ""));
             meta.setLore(java.util.Arrays.asList(
                     ChatColor.GRAY + "Đặt khối này để khởi tạo mạng lưới lãnh thổ.",
+                    ChatColor.GOLD + "Cấp độ Lõi: " + ChatColor.WHITE + level,
                     ChatColor.AQUA + "Nguồn năng lượng huyền bí từ đại dương."
             ));
             meta.getPersistentDataContainer().set(PDCKeys.IS_CORE_ITEM, PersistentDataType.BYTE, (byte) 1);
-            starterCore.setItemMeta(meta);
+            meta.getPersistentDataContainer().set(PDCKeys.CORE_LEVEL, PersistentDataType.INTEGER, level);
+            coreItem.setItemMeta(meta);
         }
-        return starterCore;
+        return coreItem;
     }
 
     public boolean removeCore(Location loc, Player player, boolean giveItem) {
@@ -346,98 +646,122 @@ public class CoreManager implements Listener {
         coreShards.remove(core.getCoreId());
         corePeaceCooldowns.remove(core.getCoreId());
 
-        coresConfig.set("cores." + core.getCoreId().toString(), null);
-        saveCoresConfig();
+        UUID ownerUUID = core.getOwnerUUID();
+        YamlConfiguration playerConfig = loadPlayerConfig(ownerUUID);
+        playerConfig.set("cores." + core.getCoreId().toString(), null);
+
+        boolean hasCoresLeft = false;
+        if (playerConfig.contains("cores")) {
+            ConfigurationSection sec = playerConfig.getConfigurationSection("cores");
+            if (sec != null && !sec.getKeys(false).isEmpty()) {
+                hasCoresLeft = true;
+            }
+        }
+
+        if (!hasCoresLeft) {
+            File pFile = getPlayerFile(ownerUUID);
+            File pBackup = getPlayerBackupFile(ownerUUID);
+            File pTemp = getPlayerTempFile(ownerUUID);
+            if (pFile.exists()) pFile.delete();
+            if (pBackup.exists()) pBackup.delete();
+            if (pTemp.exists()) pTemp.delete();
+        } else {
+            savePlayerConfig(ownerUUID, playerConfig);
+        }
+        
+        HologramManager.removeCoreHologram(core.getCoreId(), core.getLocation());
 
         Block block = alignedLoc.getBlock();
         block.setType(Material.AIR);
 
         if (player != null && giveItem) {
-            player.getInventory().addItem(createCoreItem());
-            player.sendMessage(ChatColor.GREEN + "[Bảo vệ] Lõi Lãnh Thổ đã được đóng gói và nạp trực tiếp vào hòm đồ của bạn.");
+            player.getInventory().addItem(createCoreItem(core.getLevel()));
+            player.sendMessage(ChatColor.GREEN + "[Bảo vệ] Lõi Lãnh Thổ (Cấp " + core.getLevel() + ") đã được đóng gói và nạp trực tiếp vào hòm đồ của bạn.");
             player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_LAND, 0.8f, 1.2f);
         }
         return true;
     }
 
     public void loadAllCores() {
-        if (!coresConfig.contains("cores")) return;
-        ConfigurationSection coresSection = coresConfig.getConfigurationSection("cores");
-        if (coresSection == null) return;
+        int[] loadedCount = new int[]{0};
 
-        int loadedCount = 0;
-        for (String key : coresSection.getKeys(false)) {
-            String path = "cores." + key;
+        // 1. Kiểm tra di trú (Migration Check) từ file cores.yml cũ
+        if (coresFile.exists() && coresFile.length() > 0) {
+            YamlConfiguration oldConfig = new YamlConfiguration();
             try {
-                UUID coreId = UUID.fromString(key);
-                String worldName = coresConfig.getString(path + ".world");
-                double x = coresConfig.getDouble(path + ".x");
-                double y = coresConfig.getDouble(path + ".y");
-                double z = coresConfig.getDouble(path + ".z");
-
-                World world = Bukkit.getWorld(worldName);
-                if (world == null) continue;
-
-                Location loc = new Location(world, x, y, z);
-                int level = coresConfig.getInt(path + ".level", 1);
-                double fep = coresConfig.getDouble(path + ".fep", 100.0);
-                double shield = coresConfig.getDouble(path + ".shield", 1000.0);
-                String allyId = coresConfig.getString(path + ".ally", null);
-                UUID ownerUUID = UUID.fromString(coresConfig.getString(path + ".owner"));
-
-                TerritoryCore core = new TerritoryCore(coreId, loc, ownerUUID, level, fep, shield, allyId);
-                core.setMerged(coresConfig.getBoolean(path + ".is_merged", false));
-                core.setLastRaidCallTime(coresConfig.getLong(path + ".last_raid_call_time", 0L));
-                core.setRaidCallCount(coresConfig.getInt(path + ".raid_call_count", 0));
-                core.setTotalRaidCount(coresConfig.getInt(path + ".total_raid_count", 0));
-                activeCores.put(getBlockAlignedLocation(loc), core);
-
-                int shards = coresConfig.getInt(path + ".shards", 0);
-                coreShards.put(coreId, shards);
-
-                long peaceUntil = coresConfig.getLong(path + ".peace_until", 0L);
-                corePeaceCooldowns.put(coreId, peaceUntil);
-
-                long lastRaid = coresConfig.getLong(path + ".last_pve_raid", 0L);
-                coreLastRaidTimes.put(coreId, lastRaid);
-
-                loadedCount++;
+                oldConfig.load(coresFile);
+                if (oldConfig.contains("cores")) {
+                    ConfigurationSection oldSection = oldConfig.getConfigurationSection("cores");
+                    if (oldSection != null && !oldSection.getKeys(false).isEmpty()) {
+                        plugin.getLogger().warning("[TD] Phat hien du lieu cores.yml cu! Dang tien hanh di tru sang luu tru ca nhan...");
+                        
+                        loadCoresFromConfig(oldConfig, null, loadedCount);
+                        
+                        for (TerritoryCore core : activeCores.values()) {
+                            YamlConfiguration playerConfig = loadPlayerConfig(core.getOwnerUUID());
+                            saveCoreToConfig(playerConfig, core);
+                            savePlayerConfig(core.getOwnerUUID(), playerConfig);
+                        }
+                        
+                        plugin.getLogger().info("[TD] Da hoan thanh di tru " + loadedCount[0] + " Loi sang userdata.");
+                        
+                        File migratedBackup = new File(plugin.getDataFolder(), "cores_migrated_backup.yml");
+                        if (coresFile.renameTo(migratedBackup)) {
+                            plugin.getLogger().info("[TD] Da sao luu cores.yml thanh cores_migrated_backup.yml");
+                        } else {
+                            coresFile.delete();
+                        }
+                        return;
+                    }
+                }
             } catch (Exception e) {
-                plugin.getLogger().severe("Lỗi khi khôi phục Lõi từ tệp cores.yml: " + key);
+                plugin.getLogger().severe("[TD] Loi khi nap hoac di tru file cores.yml cu: " + e.getMessage());
             }
         }
-        plugin.getLogger().info("[TD] Đã khôi phục thành công " + loadedCount + " Lõi Lãnh Thổ đang hoạt động từ cores.yml.");
+
+        // 2. Nap du lieu tu thu muc userdata/
+        File userDataDir = getUserDataFolder();
+        File[] files = userDataDir.listFiles((dir, name) -> name.endsWith(".yml") && !name.endsWith(".tmp") && !name.endsWith(".bak"));
+        if (files != null) {
+            for (File file : files) {
+                String fileName = file.getName();
+                String uuidStr = fileName.substring(0, fileName.length() - 4);
+                try {
+                    UUID ownerUUID = UUID.fromString(uuidStr);
+                    YamlConfiguration playerConfig = loadPlayerConfig(ownerUUID);
+                    loadCoresFromConfig(playerConfig, ownerUUID, loadedCount);
+                } catch (IllegalArgumentException e) {
+                    // Ignore invalid UUID filenames
+                }
+            }
+        }
+
+        plugin.getLogger().info("[TD] Da khoi phuc thanh cong " + loadedCount[0] + " Loi Lanh Tho dang hoat dong tu userdata.");
     }
 
     public void saveAllCores() {
-        for (Map.Entry<Location, TerritoryCore> entry : activeCores.entrySet()) {
-            Location loc = entry.getKey();
-            TerritoryCore core = entry.getValue();
-            String path = "cores." + core.getCoreId().toString();
-
-            coresConfig.set(path + ".world", loc.getWorld().getName());
-            coresConfig.set(path + ".x", loc.getBlockX());
-            coresConfig.set(path + ".y", loc.getBlockY());
-            coresConfig.set(path + ".z", loc.getBlockZ());
-            coresConfig.set(path + ".owner", core.getOwnerUUID().toString());
-            coresConfig.set(path + ".level", core.getLevel());
-            coresConfig.set(path + ".fep", core.getFep());
-            coresConfig.set(path + ".shield", core.getShield());
-            coresConfig.set(path + ".ally", getCoreAlliance(core));
-            coresConfig.set(path + ".shards", getShards(core.getCoreId()));
-            coresConfig.set(path + ".peace_until", getPeaceUntil(core.getCoreId()));
-            coresConfig.set(path + ".last_pve_raid", getLastRaidTime(core.getCoreId()));
-            coresConfig.set(path + ".is_merged", core.isMerged());
-            coresConfig.set(path + ".last_raid_call_time", core.getLastRaidCallTime());
-            coresConfig.set(path + ".raid_call_count", core.getRaidCallCount());
-            coresConfig.set(path + ".total_raid_count", core.getTotalRaidCount());
-
-            Block block = loc.getBlock();
-            if (block.getType() == Material.CONDUIT) {
-                saveCoreToBlock(block, core);
-            }
+        java.util.Map<UUID, java.util.List<TerritoryCore>> playerCores = new java.util.HashMap<>();
+        for (TerritoryCore core : activeCores.values()) {
+            playerCores.computeIfAbsent(core.getOwnerUUID(), k -> new java.util.ArrayList<>()).add(core);
         }
-        saveCoresConfig();
+
+        for (Map.Entry<UUID, java.util.List<TerritoryCore>> entry : playerCores.entrySet()) {
+            UUID ownerUUID = entry.getKey();
+            java.util.List<TerritoryCore> cores = entry.getValue();
+
+            YamlConfiguration playerConfig = loadPlayerConfig(ownerUUID);
+            playerConfig.set("cores", null);
+
+            for (TerritoryCore core : cores) {
+                saveCoreToConfig(playerConfig, core);
+                Block block = core.getLocation().getBlock();
+                if (block.getType() == Material.CONDUIT) {
+                    saveCoreToBlock(block, core);
+                }
+            }
+
+            savePlayerConfig(ownerUUID, playerConfig);
+        }
     }
 
     private void saveCoreToBlock(Block block, TerritoryCore core) {
@@ -452,6 +776,11 @@ public class CoreManager implements Listener {
             NamespacedKey coreShardsKey = new NamespacedKey(plugin, "td_core_shards");
             pdc.set(coreShardsKey, PersistentDataType.INTEGER, getShards(core.getCoreId()));
 
+            NamespacedKey isMergedKey = new NamespacedKey(plugin, "td_core_is_merged");
+            NamespacedKey mergeCountKey = new NamespacedKey(plugin, "td_core_merge_count");
+            pdc.set(isMergedKey, PersistentDataType.BYTE, (byte) (core.isMerged() ? 1 : 0));
+            pdc.set(mergeCountKey, PersistentDataType.INTEGER, core.getMergeCount());
+
             String currentAlly = getCoreAlliance(core);
             if (currentAlly != null) {
                 pdc.set(PDCKeys.ALLY_ID, PersistentDataType.STRING, currentAlly);
@@ -463,11 +792,8 @@ public class CoreManager implements Listener {
     }
 
     private void saveCoresConfig() {
-        try {
-            coresConfig.save(coresFile);
-        } catch (IOException e) {
-            plugin.getLogger().severe("Không thể lưu cấu hình tệp cores.yml!");
-        }
+        // De giu tuong thich cho cac cho goi cu neu co, tu dong saveAllCores
+        saveAllCores();
     }
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -484,7 +810,65 @@ public class CoreManager implements Listener {
         if (core == null) return;
 
         int shardAmount = 1;
-        if (victim.getType() == EntityType.RAVAGER || victim.getType() == EntityType.EVOKER) {
+        if (victim.hasMetadata("td_elite_boss")) {
+            shardAmount = 25;
+
+            // Roll a premium random Netherite item
+            Material[] netheriteItems = {
+                Material.NETHERITE_HELMET,
+                Material.NETHERITE_CHESTPLATE,
+                Material.NETHERITE_LEGGINGS,
+                Material.NETHERITE_BOOTS,
+                Material.NETHERITE_SWORD,
+                Material.NETHERITE_AXE,
+                Material.NETHERITE_PICKAXE,
+                Material.NETHERITE_SHOVEL,
+                Material.NETHERITE_HOE
+            };
+
+            java.util.Random random = new java.util.Random();
+            Material selectedMaterial = netheriteItems[random.nextInt(netheriteItems.length)];
+            ItemStack netheriteDrop = new ItemStack(selectedMaterial);
+
+            // Fetch all available vanilla enchantments
+            java.util.List<Enchantment> availableEnchants = new java.util.ArrayList<>();
+            for (Enchantment ench : Enchantment.values()) {
+                if (ench != null) {
+                    availableEnchants.add(ench);
+                }
+            }
+
+            if (!availableEnchants.isEmpty()) {
+                java.util.Collections.shuffle(availableEnchants);
+                int count = Math.min(10, availableEnchants.size());
+                for (int i = 0; i < count; i++) {
+                    Enchantment ench = availableEnchants.get(i);
+                    int maxLvl = ench.getMaxLevel();
+                    int minLvl = ench.getStartLevel();
+                    int level = minLvl;
+                    if (maxLvl > minLvl) {
+                        level = minLvl + random.nextInt(maxLvl - minLvl + 1);
+                    }
+                    netheriteDrop.addUnsafeEnchantment(ench, level);
+                }
+            }
+
+            // Set beautiful premium name
+            ItemMeta meta = netheriteDrop.getItemMeta();
+            if (meta != null) {
+                meta.setDisplayName(ChatColor.GOLD + "★ Cổ Vật Thượng Cổ Netherite ★");
+                java.util.List<String> lore = new java.util.ArrayList<>();
+                lore.add(ChatColor.GRAY + "Rơi ra từ việc tiêu diệt Siêu Cấp Mini-Boss!");
+                lore.add(ChatColor.YELLOW + "Chứa đựng 10 dòng cổ tự ma pháp vĩnh cửu.");
+                meta.setLore(lore);
+                netheriteDrop.setItemMeta(meta);
+            }
+
+            // Drop at location
+            if (deathLoc.getWorld() != null) {
+                deathLoc.getWorld().dropItemNaturally(deathLoc, netheriteDrop);
+            }
+        } else if (victim.getType() == EntityType.RAVAGER || victim.getType() == EntityType.EVOKER) {
             shardAmount = 3;
         }
 
@@ -663,8 +1047,26 @@ public class CoreManager implements Listener {
 
         Location alignedLoc = getBlockAlignedLocation(block.getLocation());
 
+        int placedLevel = 1;
+        if (item.hasItemMeta()) {
+            PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
+            if (pdc.has(PDCKeys.CORE_LEVEL, PersistentDataType.INTEGER)) {
+                placedLevel = pdc.get(PDCKeys.CORE_LEVEL, PersistentDataType.INTEGER);
+            }
+        }
+
         // 2. Thuật toán quét và chống giao thoa ranh giới (AABB Boundary Overlap Checker)
-        int newCoreRadius = 16; // Bán kính mặc định Lõi cấp 1 khi đặt xuống
+        int newCoreRadius = switch (placedLevel) {
+            case 1 -> 16;
+            case 2 -> 24;
+            case 3 -> 32;
+            case 4 -> 40;
+            case 5 -> 50;
+            default -> 16;
+        };
+
+        String playerAlly = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId()) : null;
+
         for (TerritoryCore existingCore : activeCores.values()) {
             Location existingLoc = existingCore.getLocation();
             if (existingLoc.getWorld() == null || !existingLoc.getWorld().equals(alignedLoc.getWorld())) continue;
@@ -673,8 +1075,13 @@ public class CoreManager implements Listener {
             int distanceX = Math.abs(alignedLoc.getBlockX() - existingLoc.getBlockX());
             int distanceZ = Math.abs(alignedLoc.getBlockZ() - existingLoc.getBlockZ());
 
-            // Ranh giới bảo vệ không được phép giao nhau hoặc gối chồng lên nhau
+            // Ranh giới bảo vệ không được phép giao nhau hoặc gối chồng lên nhau (trừ khi cùng liên minh)
             if (distanceX <= (newCoreRadius + existingRadius) && distanceZ <= (newCoreRadius + existingRadius)) {
+                String existingAlly = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(existingCore.getOwnerUUID()) : null;
+                if (playerAlly != null && playerAlly.equals(existingAlly)) {
+                    // Cùng liên minh: Cho phép đặt chồng ranh giới lên nhau để chuẩn bị gộp đất
+                    continue;
+                }
                 player.sendMessage(ChatColor.RED + "Vị trí này quá gần với một Lãnh thổ khác đang tồn tại! Bán kính ranh giới dự kiến bị giao thoa đè lên nhau.");
                 player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
                 event.setCancelled(true);
@@ -683,11 +1090,12 @@ public class CoreManager implements Listener {
         }
 
         UUID newCoreId = UUID.randomUUID();
-        String playerAlly = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId()) : null;
 
         TerritoryCore newCore = new TerritoryCore(
-                newCoreId, alignedLoc, player.getUniqueId(), 1, 100.0, 1000.0, playerAlly
+                newCoreId, alignedLoc, player.getUniqueId(), placedLevel, 100.0, 1000.0, playerAlly
         );
+        newCore.setFep(newCore.getMaxFepCapacity());
+        newCore.setShield(newCore.getMaxShieldCapacity());
 
         registerCore(alignedLoc, newCore);
         saveCoreToBlock(block, newCore);

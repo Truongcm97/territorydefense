@@ -70,8 +70,9 @@ public class TowerUpgradeGui extends CustomHolder {
                 ChatColor.RED + "⚠ Nhấp để xem chi tiết và xác nhận!"
         ));
 
-        // Slot 22: Quay lại danh sách tháp
-        inv.setItem(22, createGuiItem(Material.BARRIER, ChatColor.RED + "Quay Lại Giao Diện", "BACK"));
+        // Slot 22: Quay lại danh sách tháp, Slot 26: Thoát ra
+        inv.setItem(22, createGuiItem(Material.ARROW, ChatColor.YELLOW + "Quay Lại Danh Sách", "BACK"));
+        inv.setItem(26, createGuiItem(Material.BARRIER, ChatColor.RED + "Thoát ra", "CLOSE"));
 
         return inv;
     }
@@ -84,6 +85,11 @@ public class TowerUpgradeGui extends CustomHolder {
         if (clickedItem.hasItemMeta()) {
             String action = clickedItem.getItemMeta().getPersistentDataContainer().get(actionKey, PersistentDataType.STRING);
             if (action == null) return;
+
+            if (action.equalsIgnoreCase("CLOSE")) {
+                player.closeInventory();
+                return;
+            }
 
             if (action.equalsIgnoreCase("BACK")) {
                 player.closeInventory();
@@ -153,6 +159,8 @@ public class TowerUpgradeGui extends CustomHolder {
         }
 
         tower.setLevel(nextLevel);
+
+        com.truongcm.territorydefense.feature.core.HologramManager.updateTowerHologram(tower);
 
         player.sendMessage(ChatColor.GREEN + "[Tháp] Nâng cấp thành công " + ChatColor.YELLOW + tower.getDisplayName() +
                 ChatColor.GREEN + " lên " + ChatColor.GOLD + "Cấp " + nextLevel + "!");

@@ -144,6 +144,13 @@ public class AllyMainMenuGui extends CustomHolder {
                     ChatColor.GRAY + "Mọi thành viên sẽ trở về trạng thái Solo tự do.",
                     ChatColor.RED + "Cảnh báo: Hành động này không thể hoàn tác!"
             ));
+            inv.setItem(18, createGuiItem(Material.GOLDEN_HOE, ChatColor.GOLD + "" + ChatColor.BOLD + "Hợp Nhất Lãnh Thổ", "MERGE_TERRITORY",
+                    ChatColor.GRAY + "Gộp diện tích lãnh thổ của các thành viên",
+                    ChatColor.GRAY + "lại với nhau để tăng cường ranh giới bảo vệ",
+                    ChatColor.GRAY + "và nhận thêm chỉ số gia tăng sức mạnh.",
+                    " ",
+                    ChatColor.YELLOW + "➔ Nhấp chuột để bắt đầu hợp nhất!"
+            ));
         } else {
             inv.setItem(16, createGuiItem(Material.LEATHER_BOOTS, ChatColor.RED + "" + ChatColor.BOLD + "Rời Khỏi Liên Minh", "LEAVE_ALLY",
                     ChatColor.GRAY + "Thoát ly khỏi liên minh hiện tại.",
@@ -222,6 +229,14 @@ public class AllyMainMenuGui extends CustomHolder {
                 if (alliance == null) return;
                 player.closeInventory();
                 player.performCommand("ally disband");
+                return;
+            }
+
+            if (action.equalsIgnoreCase("MERGE_TERRITORY")) {
+                if (alliance == null) return;
+                player.closeInventory();
+                player.performCommand("ally merge");
+                return;
             }
         }
     }

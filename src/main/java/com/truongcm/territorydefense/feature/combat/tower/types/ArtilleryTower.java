@@ -46,12 +46,12 @@ public class ArtilleryTower extends Tower {
     public double getDamage() {
         // Tịnh tiến sát thương bộc phá: 40.0 -> 60.0 -> 88.0 -> 120.0 -> 160.0 DMG theo cấp độ
         return switch (level) {
-            case 1 -> 40.0;
-            case 2 -> 60.0;
-            case 3 -> 88.0;
-            case 4 -> 120.0;
-            case 5 -> 160.0;
-            default -> 40.0;
+            case 1 -> 10.0;
+            case 2 -> 14.0;
+            case 3 -> 18.0;
+            case 4 -> 22.0;
+            case 5 -> 26.0;
+            default -> 10.0;
         };
     }
 
@@ -76,11 +76,14 @@ public class ArtilleryTower extends Tower {
         for (Entity entity : potentialTargets) {
             if (!(entity instanceof LivingEntity living)) continue;
 
-            // Áp bộ lọc đồng minh an toàn
+            boolean isRaidMob = living.hasMetadata("td_raid_mob") || (com.truongcm.territorydefense.feature.core.PDCKeys.RAID_MOB_TAG != null && living.getPersistentDataContainer().has(com.truongcm.territorydefense.feature.core.PDCKeys.RAID_MOB_TAG, org.bukkit.persistence.PersistentDataType.BYTE));
             if (isValidTarget(living, core, TerritoryDefense.getInstance())
-                    || (living.hasMetadata("td_raid_mob") && !living.isDead() && living.isValid())) {
+                    || (isRaidMob && !living.isDead() && living.isValid())) {
 
                 // Gây sát thương AoE diện rộng
+                if (core != null && core.getOwnerUUID() != null) {
+                    living.setMetadata("td_last_tower_damager_uuid", new FixedMetadataValue(TerritoryDefense.getInstance(), core.getOwnerUUID().toString()));
+                }
                 living.damage(finalDamage);
                 living.setMetadata("td_last_damaged_by_tower", new FixedMetadataValue(TerritoryDefense.getInstance(), true));
 

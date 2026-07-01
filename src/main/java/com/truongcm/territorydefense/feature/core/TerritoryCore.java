@@ -1,7 +1,10 @@
 package com.truongcm.territorydefense.feature.core;
 
 import org.bukkit.Location;
+import org.bukkit.Bukkit;
+import org.bukkit.inventory.Inventory;
 import java.util.UUID;
+import java.util.List;
 
 /**
  * MODEL THỰC THỂ LÕI CHÍNH (TERRITORY CORE)
@@ -18,14 +21,40 @@ public class TerritoryCore {
     private double shield;
     private String allyId;
 
+    // Kho thực phẩm gồm 54 slot để chứa đồ ăn trung chuyển
+    private final Inventory foodWarehouse;
+
+    // Kho nguyên liệu tái thiết lãnh thổ gồm 54 slot
+    private final Inventory rebuildWarehouse;
+
+    // Lưu 54 slot thiết kế công trình của Lõi phục vụ tính năng Blueprint
+    private final List<List<BlockSnapshot>> blueprintSlots = new java.util.ArrayList<>();
+    private boolean publicBlueprintShared = false;
+    private final List<Boolean> blueprintSlotsBought = new java.util.ArrayList<>();
+    private final List<String> blueprintNames = new java.util.ArrayList<>();
+    private final List<Integer> blueprintScanLevels = new java.util.ArrayList<>();
+    private final List<Double> blueprintPrices = new java.util.ArrayList<>();
+    private final List<Boolean> blueprintSellingStatus = new java.util.ArrayList<>();
+    private int builderLevel = 1;
+    private double blueprintPrice = 0.0;
+    private int sellingSlotIndex = 0;
+
+    // Biến lưu trạng thái hợp nhất đất liên minh (Ally land merge)
+    private boolean isMerged = false;
+    private int mergeCount = 0;
+
     // Biến tạm thời lưu trong RAM phục vụ PvE Raid (Giáp chiến đấu tạm thời, không lưu vào DB/PDC)
     private double tempHealth;
     private boolean isRaidActive = false;
-
-    private boolean isMerged = false;
-    private int raidCallCount = 0;
+    private double permanentRaidMultiplier = 1.0;
+    private double temporaryRaidMultiplier = 1.0;
+    private int completedRaids = 0;
     private int totalRaidCount = 0;
-    private long lastRaidCallTime = 0L;
+    private int raidCallCount = 0;
+
+    // Thời điểm hết bị vô hiệu hóa (UNIX timestamp ms)
+    private long disabledUntil = 0;
+
 
     public TerritoryCore(UUID coreId, Location location, UUID ownerUUID, int level, double fep, double shield, String allyId) {
         this.coreId = coreId;
@@ -35,7 +64,28 @@ public class TerritoryCore {
         this.fep = fep;
         this.shield = shield;
         this.allyId = allyId;
+        this.foodWarehouse = Bukkit.createInventory(null, 54, "Kho Thực Phẩm Lõi");
+        this.rebuildWarehouse = Bukkit.createInventory(null, 54, "Kho Nguyên Liệu Tái Thiết");
         this.tempHealth = getMaxShieldCapacity();
+        this.permanentRaidMultiplier = 1.0;
+        this.temporaryRaidMultiplier = 1.0;
+        this.completedRaids = 0;
+        this.totalRaidCount = 0;
+        this.raidCallCount = 0;
+        this.isMerged = false;
+        this.mergeCount = 0;
+        this.disabledUntil = 0;
+        this.builderLevel = 1;
+        this.blueprintPrice = 0.0;
+        this.sellingSlotIndex = 0;
+        for (int i = 0; i < 54; i++) {
+            this.blueprintSlots.add(new java.util.ArrayList<>());
+            this.blueprintSlotsBought.add(false);
+            this.blueprintNames.add("Bản thiết kế #" + (i + 1));
+            this.blueprintScanLevels.add(1);
+            this.blueprintPrices.add(0.0);
+            this.blueprintSellingStatus.add(false);
+        }
     }
 
     // --- CÁC PHƯƠNG THỨC TRUY XUẤT CHỈ SỐ GDD ---
@@ -44,7 +94,7 @@ public class TerritoryCore {
      * Lấy bán kính vùng bảo vệ dựa trên cấp độ Lõi
      */
     public int getRadius() {
-        return switch (level) {
+        int base = switch (level) {
             case 1 -> 30;
             case 2 -> 50;
             case 3 -> 70;
@@ -52,13 +102,20 @@ public class TerritoryCore {
             case 5 -> 110;
             default -> 30;
         };
+        try {
+            com.truongcm.territorydefense.TerritoryDefense plugin = com.truongcm.territorydefense.TerritoryDefense.getInstance();
+            if (plugin != null && plugin.getConfig() != null) {
+                base = plugin.getConfig().getInt("core-settings.levels." + level + ".radius", base);
+            }
+        } catch (Exception ignored) {}
+        return base;
     }
 
     /**
      * Lấy sức chứa FEP tối đa (Capacity Cap) dựa trên cấp độ Lõi
      */
     public double getMaxFepCapacity() {
-        double capacity = switch (level) {
+        double base = switch (level) {
             case 1 -> 500.0;
             case 2 -> 1500.0;
             case 3 -> 4000.0;
@@ -66,14 +123,23 @@ public class TerritoryCore {
             case 5 -> 25000.0;
             default -> 500.0;
         };
-        return isMerged ? capacity * 1.10 : capacity;
+        try {
+            com.truongcm.territorydefense.TerritoryDefense plugin = com.truongcm.territorydefense.TerritoryDefense.getInstance();
+            if (plugin != null && plugin.getConfig() != null) {
+                base = plugin.getConfig().getDouble("core-settings.levels." + level + ".max-fep", base);
+            }
+        } catch (Exception ignored) {}
+        if (isMerged && mergeCount > 0) {
+            base *= (1.0 + 0.05 * mergeCount);
+        }
+        return base;
     }
 
     /**
      * Lấy lớp giáp bảo vệ ảo tối đa dựa trên cấp độ Lõi
      */
     public double getMaxShieldCapacity() {
-        double cap = switch (level) {
+        double base = switch (level) {
             case 1 -> 1000.0;
             case 2 -> 2500.0;
             case 3 -> 5000.0;
@@ -81,14 +147,23 @@ public class TerritoryCore {
             case 5 -> 20000.0;
             default -> 1000.0;
         };
-        return isMerged ? cap * 1.10 : cap;
+        try {
+            com.truongcm.territorydefense.TerritoryDefense plugin = com.truongcm.territorydefense.TerritoryDefense.getInstance();
+            if (plugin != null && plugin.getConfig() != null) {
+                base = plugin.getConfig().getDouble("core-settings.levels." + level + ".max-shield", base);
+            }
+        } catch (Exception ignored) {}
+        if (isMerged && mergeCount > 0) {
+            base *= (1.0 + 0.05 * mergeCount);
+        }
+        return base;
     }
 
     /**
      * Lấy giới hạn tháp canh tối đa có thể xây dựng trong ranh giới
      */
     public int getMaxTowers() {
-        return switch (level) {
+        int base = switch (level) {
             case 1 -> 3;
             case 2 -> 7;
             case 3 -> 12;
@@ -96,6 +171,13 @@ public class TerritoryCore {
             case 5 -> 22;
             default -> 3;
         };
+        try {
+            com.truongcm.territorydefense.TerritoryDefense plugin = com.truongcm.territorydefense.TerritoryDefense.getInstance();
+            if (plugin != null && plugin.getConfig() != null) {
+                base = plugin.getConfig().getInt("core-settings.levels." + level + ".max-towers", base);
+            }
+        } catch (Exception ignored) {}
+        return base;
     }
 
     // --- CÁC PHƯƠNG THỨC GETTERS VÀ SETTERS ---
@@ -177,6 +259,22 @@ public class TerritoryCore {
         this.isRaidActive = false;
     }
 
+    public double getPermanentRaidMultiplier() {
+        return permanentRaidMultiplier;
+    }
+
+    public void setPermanentRaidMultiplier(double permanentRaidMultiplier) {
+        this.permanentRaidMultiplier = Math.max(1.0, permanentRaidMultiplier);
+    }
+
+    public double getTemporaryRaidMultiplier() {
+        return temporaryRaidMultiplier;
+    }
+
+    public void setTemporaryRaidMultiplier(double temporaryRaidMultiplier) {
+        this.temporaryRaidMultiplier = Math.max(1.0, temporaryRaidMultiplier);
+    }
+
     public boolean isMerged() {
         return isMerged;
     }
@@ -185,13 +283,121 @@ public class TerritoryCore {
         this.isMerged = merged;
     }
 
-    public int getRaidCallCount() {
-        checkRaidCallReset();
-        return raidCallCount;
+    public int getMergeCount() {
+        return mergeCount;
     }
 
-    public void setRaidCallCount(int raidCallCount) {
-        this.raidCallCount = raidCallCount;
+    public void setMergeCount(int mergeCount) {
+        this.mergeCount = mergeCount;
+    }
+
+    public int getCompletedRaids() {
+        return completedRaids;
+    }
+
+    public void setCompletedRaids(int completedRaids) {
+        this.completedRaids = Math.max(0, completedRaids);
+    }
+
+    public long getDisabledUntil() {
+        return disabledUntil;
+    }
+
+    public void setDisabledUntil(long disabledUntil) {
+        this.disabledUntil = disabledUntil;
+    }
+
+    public boolean isDisabled() {
+        return System.currentTimeMillis() < disabledUntil;
+    }
+
+    public double getReactivateCost() {
+        return switch (level) {
+            case 1 -> 10000.0;
+            case 2 -> 50000.0;
+            case 3 -> 200000.0;
+            case 4 -> 500000.0;
+            case 5 -> 1000000.0;
+            default -> 10000.0;
+        };
+    }
+
+    public Inventory getFoodWarehouse() {
+        return foodWarehouse;
+    }
+
+    public Inventory getRebuildWarehouse() {
+        return rebuildWarehouse;
+    }
+
+    public List<List<BlockSnapshot>> getBlueprintSlots() {
+        return blueprintSlots;
+    }
+
+    public boolean isPublicBlueprintShared() {
+        return publicBlueprintShared;
+    }
+
+    public void setPublicBlueprintShared(boolean publicBlueprintShared) {
+        this.publicBlueprintShared = publicBlueprintShared;
+    }
+
+    public int getBuilderLevel() {
+        return builderLevel;
+    }
+
+    public void setBuilderLevel(int builderLevel) {
+        this.builderLevel = Math.max(1, Math.min(5, builderLevel));
+    }
+
+    public double getBlueprintPrice() {
+        return blueprintPrice;
+    }
+
+    public void setBlueprintPrice(double blueprintPrice) {
+        this.blueprintPrice = Math.max(0.0, blueprintPrice);
+    }
+
+    public int getSellingSlotIndex() {
+        return sellingSlotIndex;
+    }
+
+    public void setSellingSlotIndex(int sellingSlotIndex) {
+        this.sellingSlotIndex = Math.max(0, Math.min(8, sellingSlotIndex));
+    }
+
+    public List<Boolean> getBlueprintSlotsBought() {
+        return blueprintSlotsBought;
+    }
+
+    public List<String> getBlueprintNames() {
+        return blueprintNames;
+    }
+
+    public List<Integer> getBlueprintScanLevels() {
+        return blueprintScanLevels;
+    }
+
+    public List<Double> getBlueprintPrices() {
+        return blueprintPrices;
+    }
+
+    public List<Boolean> getBlueprintSellingStatus() {
+        return blueprintSellingStatus;
+    }
+
+    public static boolean isSameDesign(List<BlockSnapshot> d1, List<BlockSnapshot> d2) {
+        if (d1 == null || d2 == null) return false;
+        if (d1.size() != d2.size()) return false;
+        for (int i = 0; i < d1.size(); i++) {
+            BlockSnapshot s1 = d1.get(i);
+            BlockSnapshot s2 = d2.get(i);
+            if (s1.relX != s2.relX || s1.relY != s2.relY || s1.relZ != s2.relZ) return false;
+            if (!s1.material.equals(s2.material)) return false;
+            if (s1.blockData != null && !s1.blockData.equals(s2.blockData)) return false;
+            if (s1.blockData == null && s2.blockData != null) return false;
+        }
+        return true;
     }
 
     public int getTotalRaidCount() {
@@ -199,25 +405,31 @@ public class TerritoryCore {
     }
 
     public void setTotalRaidCount(int totalRaidCount) {
-        this.totalRaidCount = totalRaidCount;
+        this.totalRaidCount = Math.max(0, totalRaidCount);
     }
 
-    public long getLastRaidCallTime() {
-        return lastRaidCallTime;
+    public int getRaidCallCount() {
+        return raidCallCount;
     }
 
-    public void setLastRaidCallTime(long lastRaidCallTime) {
-        this.lastRaidCallTime = lastRaidCallTime;
+    public void setRaidCallCount(int raidCallCount) {
+        this.raidCallCount = Math.max(0, raidCallCount);
     }
 
-    public void checkRaidCallReset() {
-        if (lastRaidCallTime > 0L) {
-            long elapsed = System.currentTimeMillis() - lastRaidCallTime;
-            if (elapsed >= 24L * 60L * 60L * 1000L) { // 24 giờ
-                this.raidCallCount = 0;
-                // Không thay đổi lastRaidCallTime để tránh reset lặp liên tục,
-                // sẽ được cập nhật sang giờ mới khi người chơi kích hoạt đợt tiếp theo.
-            }
+    // Lớp nội bộ đại diện cho Snapshot của khối Block
+    public static class BlockSnapshot {
+        public final int relX;
+        public final int relY;
+        public final int relZ;
+        public final String material;
+        public final String blockData;
+
+        public BlockSnapshot(int relX, int relY, int relZ, String material, String blockData) {
+            this.relX = relX;
+            this.relY = relY;
+            this.relZ = relZ;
+            this.material = material;
+            this.blockData = blockData;
         }
     }
 }

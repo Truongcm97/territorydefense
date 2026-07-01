@@ -73,7 +73,9 @@ public class FarmerListGui extends CustomHolder {
             slot++;
         }
 
-        inv.setItem(22, createGuiItem(Material.BARRIER, ChatColor.RED + "Quay Lại", "BACK"));
+        // Slot 22: Quay lại Lõi, Slot 26: Thoát ra
+        inv.setItem(22, createGuiItem(Material.ARROW, ChatColor.YELLOW + "Quay Lại Lõi", "BACK"));
+        inv.setItem(26, createGuiItem(Material.BARRIER, ChatColor.RED + "Thoát ra", "CLOSE"));
 
         return inv;
     }
@@ -86,6 +88,11 @@ public class FarmerListGui extends CustomHolder {
         if (clickedItem.hasItemMeta()) {
             String action = clickedItem.getItemMeta().getPersistentDataContainer().get(actionKey, PersistentDataType.STRING);
             if (action == null) return;
+
+            if (action.equalsIgnoreCase("CLOSE")) {
+                player.closeInventory();
+                return;
+            }
 
             if (action.equalsIgnoreCase("BACK")) {
                 player.closeInventory();

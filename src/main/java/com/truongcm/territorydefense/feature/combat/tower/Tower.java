@@ -53,6 +53,10 @@ public abstract class Tower {
     public abstract double getDamage();
     public abstract void performAttack(LivingEntity target, TerritoryCore core);
 
+    public double getFepCost() {
+        return 5.0; // Mức tiêu hao mặc định toàn cục mới (tăng từ 2.0 lên 5.0)
+    }
+
     /**
      * BỘ LỌC MỤC TIÊU TOÀN DIỆN (ADVANCED TARGET FILTER) - SỬA LỖI 10 CHƠI SOLO
      * Bảo hộ an toàn cho chủ sở hữu, người cùng bang và thú nuôi liên quan.
@@ -100,7 +104,8 @@ public abstract class Tower {
 
         // 3. Kiểm duyệt lính đánh thuê / NPC gác thành của phe mình
         PersistentDataContainer pdc = entity.getPersistentDataContainer();
-        if (pdc.has(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING)) {
+        boolean isRaidMob = entity.hasMetadata("td_raid_mob") || (PDCKeys.RAID_MOB_TAG != null && pdc.has(PDCKeys.RAID_MOB_TAG, PersistentDataType.BYTE));
+        if (!isRaidMob && pdc.has(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING)) {
             String ownerCoreIdStr = pdc.get(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING);
             if (ownerCoreIdStr != null) {
                 try {
@@ -126,7 +131,7 @@ public abstract class Tower {
         }
 
         // 4. Mặc định tấn công toàn bộ Quái vật hung ác (Zombie, Skeleton, Creeper, Slime, MagmaCube, Phantom,...)
-        if (entity instanceof org.bukkit.entity.Enemy || entity.hasMetadata("td_raid_mob") || entity.hasMetadata("td_npc_attacker")) {
+        if (entity instanceof org.bukkit.entity.Enemy || isRaidMob || entity.hasMetadata("td_npc_attacker")) {
             return true;
         }
 
@@ -134,17 +139,17 @@ public abstract class Tower {
     }
 
     public double getFinalDamage(LivingEntity target) {
-        // Giảm sát thương cơ bản của trụ đi 80% (chỉ còn 20% sát thương gốc)
-        double baseDamage = getDamage() * 0.20;
-        double buffedDamage = TerritoryDefense.getInstance().getTowerManager().applySpellBuffModifier(getLocation(), baseDamage);
+        double baseDamage = getDamage();
         
-        if (target instanceof org.bukkit.entity.Player) {
-            // Sát thương lên Player về 20%
-            return buffedDamage * 0.20;
-        } else {
-            // Sát thương lên Quái về 100%
-            return buffedDamage * 1.0;
+        // Áp dụng buff hợp nhất lãnh thổ (Ally land merge boost +5% damage per merged core)
+        if (ownerCoreId != null && TerritoryDefense.getInstance().getCoreManager() != null) {
+            TerritoryCore core = TerritoryDefense.getInstance().getCoreManager().getCoreById(ownerCoreId);
+            if (core != null && core.isMerged() && core.getMergeCount() > 0) {
+                baseDamage *= (1.0 + 0.05 * core.getMergeCount());
+            }
         }
+
+        return baseDamage;
     }
 
     // --- GETTERS & SETTERS ---

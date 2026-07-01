@@ -78,7 +78,7 @@ public class TowerManager extends BukkitRunnable implements Listener {
                 core = plugin.getCoreManager().getCoreByLocationRange(tLoc);
             }
 
-            if (core == null || core.getFep() < 2.0) {
+            if (core == null || core.isDisabled() || core.getFep() < tower.getFepCost()) {
                 continue;
             }
 
@@ -90,7 +90,7 @@ public class TowerManager extends BukkitRunnable implements Listener {
 
             LivingEntity target = acquireTarget(tower, core);
             if (target != null) {
-                core.setFep(core.getFep() - 2.0);
+                core.setFep(core.getFep() - tower.getFepCost());
                 tower.performAttack(target, core);
                 tower.setLastShotTime(now);
             }
@@ -220,6 +220,8 @@ public class TowerManager extends BukkitRunnable implements Listener {
             activeTowers.put(block.getLocation(), newTower);
             saveAllTowers();
 
+            com.truongcm.territorydefense.feature.core.HologramManager.updateTowerHologram(newTower);
+
             player.sendMessage(ChatColor.GREEN + "Bạn đã đặt thành công tháp: " + ChatColor.YELLOW + newTower.getDisplayName() + ChatColor.GREEN + " [Cấp " + placedLevel + "]");
             block.getWorld().playSound(block.getLocation(), Sound.BLOCK_ANVIL_USE, 0.8f, 1.2f);
         }
@@ -253,6 +255,7 @@ public class TowerManager extends BukkitRunnable implements Listener {
         }
 
         activeTowers.remove(block.getLocation());
+        com.truongcm.territorydefense.feature.core.HologramManager.removeTowerHologram(tower.getTowerId(), tower.getLocation());
         saveAllTowers();
 
         if (event.isDropItems()) {
@@ -281,6 +284,7 @@ public class TowerManager extends BukkitRunnable implements Listener {
             Block block = iterator.next();
             Tower tower = activeTowers.remove(block.getLocation());
             if (tower != null) {
+                com.truongcm.territorydefense.feature.core.HologramManager.removeTowerHologram(tower.getTowerId(), tower.getLocation());
                 iterator.remove();
                 block.setType(Material.AIR);
                 Location dropLoc = block.getLocation().add(0.5, 0.5, 0.5);
@@ -489,6 +493,7 @@ public class TowerManager extends BukkitRunnable implements Listener {
                     }
                 }
                 
+                com.truongcm.territorydefense.feature.core.HologramManager.removeTowerHologram(tower.getTowerId(), tLoc);
                 iterator.remove();
             }
         }

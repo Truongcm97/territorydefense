@@ -281,15 +281,20 @@ public class AllianceManager implements Listener {
         // 1. Tính toán cấp độ trung bình cộng để gán chỉ số Lá chắn ảo
         double averageLevel = (double) sumLevels / coresToMerge.size();
 
-        // Mô phỏng thiết lập lá chắn ảo tối đa thích ứng trung bình cộng cấp độ
-        double mergedMaxShield = 1000.0 * Math.pow(2.5, averageLevel - 1);
-
+        int mergeCount = coresToMerge.size();
         for (TerritoryCore core : coresToMerge) {
-            // Thiết lập đồng bộ sức mạnh phòng thủ giáp ảo đồng đều theo mốc trung bình cộng
-            core.setShield(mergedMaxShield);
+            core.setMerged(true);
+            core.setMergeCount(mergeCount);
+            
+            // Thiết lập đồng bộ sức mạnh phòng thủ giáp ảo tối đa đã được tăng thêm 5% mỗi core
+            core.setShield(core.getMaxShieldCapacity());
 
             // Phân phối chia sẻ nguồn FEP cộng dồn đều cho các bể chứa
             core.setFep(totalFepStored / coresToMerge.size());
+        }
+
+        if (plugin.getCoreManager() != null) {
+            plugin.getCoreManager().saveAllCores();
         }
 
         // Phát loa thông báo gộp đất hoàn tất
@@ -302,7 +307,7 @@ public class AllianceManager implements Listener {
             if (allyId.equals(pAlly)) {
                 player.sendMessage(ChatColor.GREEN + "[Ngoại giao] Tiến trình gộp đất hoàn tất! Vách ngăn nội bộ đã được dọn sạch.");
                 player.sendMessage(ChatColor.GREEN + " - Cấp độ Lõi trung bình: " + String.format("%.1f", averageLevel));
-                player.sendMessage(ChatColor.GREEN + " - Lớp giáp ảo đồng bộ đạt: " + String.format("%.0f", mergedMaxShield) + " Shield HP.");
+                player.sendMessage(ChatColor.GREEN + " - Lớp giáp ảo đồng bộ đạt tối đa của mỗi Lõi (Đã cộng thêm +5% mỗi Lõi hợp nhất).");
             }
         });
     }

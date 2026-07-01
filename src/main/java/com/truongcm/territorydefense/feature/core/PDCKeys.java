@@ -40,6 +40,7 @@ public class PDCKeys {
     public static NamespacedKey RAID_MOB_TAG;
     public static NamespacedKey OWNER_CORE_ID;
     public static NamespacedKey TARGET_PLAYER;
+    public static NamespacedKey IS_HOLOGRAM;
     /**
      * Khởi tạo các khóa NamespacedKey khi Plugin kích hoạt.
      * @param plugin Lớp chạy chính của plugin
@@ -69,5 +70,6 @@ public class PDCKeys {
         OWNER_CORE_ID = new NamespacedKey(plugin, "td_owner_core_id");
         ENTITY_SECURE_HASH = new NamespacedKey(plugin, "td_entity_secure_hash");
         MERC_MODE = new NamespacedKey(plugin, "td_merc_mode");
+        IS_HOLOGRAM = new NamespacedKey(plugin, "td_is_hologram");
     }
 }

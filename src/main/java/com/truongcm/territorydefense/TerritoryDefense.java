@@ -18,6 +18,7 @@ import com.truongcm.territorydefense.feature.core.BorderVisualizer;
 import com.truongcm.territorydefense.feature.core.CoreManager;
 import com.truongcm.territorydefense.feature.logistics.FEPManager;
 import com.truongcm.territorydefense.feature.logistics.FarmerManager;
+import com.truongcm.territorydefense.feature.logistics.BuilderManager;
 import com.truongcm.territorydefense.feature.core.CoreProtectionListener;
 import com.truongcm.territorydefense.feature.security.SecureEntityTracker;
 import net.milkbowl.vault.economy.Economy;
@@ -63,6 +64,7 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
     private RaidSession raidSession;
     private SiegeSession siegeSession;
     private MercenaryAI mercenaryAI;
+    private BuilderManager builderManager;
 
     @Override
     public void onEnable() {
@@ -97,6 +99,7 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
         this.raidSession = new RaidSession(this);
         this.siegeSession = new SiegeSession(this);
         this.mercenaryAI = new MercenaryAI(this);
+        this.builderManager = new BuilderManager(this);
 
         // Nạp toàn bộ dữ liệu Lõi cũ từ cores.yml vào RAM duy nhất
         this.coreManager.loadAllCores();
@@ -105,6 +108,9 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
         registerEvents();
         registerCommands();
         startSystemTasks();
+
+        // 5. Khởi tạo hệ thống Hologram thông tin Lõi & Tháp
+        com.truongcm.territorydefense.feature.core.HologramManager.initialize();
 
         getLogger().info("=============================================================");
         getLogger().info("  Territory Defense (V30) đã được kích hoạt thành công!");
@@ -119,6 +125,10 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
             this.farmerManager.removeAllActiveNPCs();
         }
 
+        if (this.builderManager != null) {
+            this.builderManager.removeAllActiveNPCs();
+        }
+
         // GHI LẠI TOÀN BỘ LIÊN MINH XUỐNG CƠ SỞ DỮ LIỆU FILE (alliances.yml)
         if (this.allianceManager != null) {
             this.allianceManager.saveAlliances();
@@ -130,6 +140,9 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
             this.coreManager.saveAllCores();
             getLogger().info("[TD] Đã lưu trữ toàn bộ dữ liệu Lõi Lãnh Thổ vào YML và PDC an toàn.");
         }
+
+        // Dọn dẹp Hologram để tránh thực thể mồ côi khi tắt/restart
+        com.truongcm.territorydefense.feature.core.HologramManager.cleanupAllHologramEntities();
     }
 
     /**
@@ -155,9 +168,11 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
 
         // Đăng ký phân hệ bảo hộ lõi cứng
         pm.registerEvents(new CoreProtectionListener(this), this);
+        pm.registerEvents(new com.truongcm.territorydefense.feature.core.HologramManager(), this);
 
         // Đăng ký tương tác GUI và rương liên minh
         pm.registerEvents(new com.truongcm.territorydefense.base.ui.GuiFramework(), this);
+        pm.registerEvents(new com.truongcm.territorydefense.feature.logistics.ui.BlueprintInputListener(this), this);
         ServerChestHook.registerListener(this);
     }
 
@@ -232,6 +247,7 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
             // Xác nhận thực thể là Farmer hoặc lính gác của plugin
             if (pdc.has(com.truongcm.territorydefense.feature.core.PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING)
                     || villager.hasMetadata("td_farmer")
+                    || villager.hasMetadata("td_builder")
                     || villager.hasMetadata("td_npc")) {
 
                 event.setCancelled(true); // Chặn mở giao dịch
@@ -274,4 +290,5 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
     public RaidSession getRaidSession() { return raidSession; }
     public SiegeSession getSiegeSession() { return siegeSession; }
     public MercenaryAI getMercenaryAI() { return mercenaryAI; }
+    public BuilderManager getBuilderManager() { return builderManager; }
 }

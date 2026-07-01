@@ -260,44 +260,8 @@ public class CoreProtectionListener implements Listener {
             return;
         }
 
-        // XỬ LÝ CLICK PHẢI (NẠP FEP THỦ CÔNG)
+        // XỬ LÝ CLICK PHẢI (MỞ GUI)
         if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
-            if (handItem != null && isFoodItem(handItem.getType())) {
-                if (isOwner || isAlly) {
-                    event.setCancelled(true); // Ngăn mở GUI
-
-                    double fepValue = getFoodFepValue(handItem.getType());
-                    double currentFep = core.getFep();
-                    double maxFep = core.getMaxFepCapacity();
-
-                    if (currentFep >= maxFep) {
-                        player.sendMessage(ChatColor.RED + "[Logistics] Bình chứa FEP của Lõi đã đầy!");
-                        player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
-                        return;
-                    }
-
-                    double newFep = Math.min(maxFep, currentFep + fepValue);
-                    core.setFep(newFep);
-                    plugin.getCoreManager().saveAllCores(); // Lưu trữ dữ liệu
-
-                    // Khấu trừ lương thực
-                    int amount = handItem.getAmount();
-                    if (amount > 1) {
-                        handItem.setAmount(amount - 1);
-                    } else {
-                        player.getInventory().setItem(event.getHand(), null);
-                    }
-
-                    player.sendMessage(ChatColor.GREEN + "[Logistics] Đã tiếp tế " + ChatColor.YELLOW + handItem.getType().name() +
-                            ChatColor.GREEN + " cho Lõi. Cộng: " + ChatColor.AQUA + "+" + fepValue + " FEP" +
-                            ChatColor.GRAY + " (" + String.format("%.1f", newFep) + "/" + maxFep + ")");
-                    player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_BURP, 1.0f, 1.0f);
-
-                    player.spawnParticle(getHappyVillagerParticle(), block.getLocation().add(0.5, 1.0, 0.5), 15, 0.4, 0.4, 0.4, 0.1);
-                    return;
-                }
-            }
-
             // MỞ GUI
             if (isOwner || isAlly) {
                 event.setCancelled(true);
@@ -325,39 +289,19 @@ public class CoreProtectionListener implements Listener {
         Entity victim = event.getEntity();
         Entity damager = event.getDamager();
 
-        // Bỏ qua quái Raid PvE — chúng có thể mang tag td_owner_core nhưng phải cho phép người chơi tấn công
-        if (victim.hasMetadata("td_raid_mob")
-                || victim.hasMetadata("td_raid")
-                || victim.getPersistentDataContainer().has(PDCKeys.RAID_MOB_TAG, PersistentDataType.BYTE)) {
+        PersistentDataContainer pdc = victim.getPersistentDataContainer();
+        
+        // Bỏ qua nếu thực thể là quái Raid công thành
+        if (victim.hasMetadata("td_raid_mob") || (PDCKeys.RAID_MOB_TAG != null && pdc.has(PDCKeys.RAID_MOB_TAG, PersistentDataType.BYTE))) {
             return;
         }
 
-        PersistentDataContainer pdc = victim.getPersistentDataContainer();
         boolean isNpc = pdc.has(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING)
                 || victim.hasMetadata("td_farmer")
                 || victim.hasMetadata("td_npc");
+        boolean isMerc = victim.hasMetadata("td_mercenary");
 
-        if (!isNpc) return;
-
-
-        TerritoryCore npcCore = null;
-        if (pdc.has(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING)) {
-            try {
-                UUID coreId = UUID.fromString(pdc.get(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING));
-                for (TerritoryCore activeCore : plugin.getCoreManager().getAllActiveCores()) {
-                    if (activeCore.getCoreId().equals(coreId)) {
-                        npcCore = activeCore;
-                        break;
-                    }
-                }
-            } catch (Exception ignored) {}
-        }
-
-        if (npcCore == null) {
-            npcCore = plugin.getCoreManager().getCoreByLocationRange(victim.getLocation());
-        }
-
-        if (npcCore == null) return;
+        if (!isNpc && !isMerc) return;
 
         Player attacker = null;
         if (damager instanceof Player p) {
@@ -367,38 +311,61 @@ public class CoreProtectionListener implements Listener {
         }
 
         if (attacker != null) {
-            boolean isOwner = npcCore.getOwnerUUID().equals(attacker.getUniqueId());
-            String playerAlly = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(attacker.getUniqueId()) : null;
-            String coreAlly = plugin.getCoreManager().getCoreAlliance(npcCore);
-            boolean isAlly = coreAlly != null && playerAlly != null && coreAlly.equalsIgnoreCase(playerAlly);
+            boolean isFriendly = false;
 
-            if (isOwner || isAlly) {
+            if (isNpc) {
+                TerritoryCore npcCore = null;
+                if (pdc.has(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING)) {
+                    try {
+                        UUID coreId = UUID.fromString(pdc.get(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING));
+                        for (TerritoryCore activeCore : plugin.getCoreManager().getAllActiveCores()) {
+                            if (activeCore.getCoreId().equals(coreId)) {
+                                npcCore = activeCore;
+                                break;
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                if (npcCore == null) {
+                    npcCore = plugin.getCoreManager().getCoreByLocationRange(victim.getLocation());
+                }
+
+                if (npcCore != null) {
+                    boolean isOwner = npcCore.getOwnerUUID().equals(attacker.getUniqueId());
+                    String playerAlly = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(attacker.getUniqueId()) : null;
+                    String coreAlly = plugin.getCoreManager().getCoreAlliance(npcCore);
+                    boolean isAlly = coreAlly != null && playerAlly != null && coreAlly.equalsIgnoreCase(playerAlly);
+                    if (isOwner || isAlly) {
+                        isFriendly = true;
+                    }
+                }
+            } else if (isMerc) {
+                String mercAllyId = null;
+                if (victim.hasMetadata("td_ally_id")) {
+                    mercAllyId = victim.getMetadata("td_ally_id").get(0).asString();
+                }
+                String playerAlly = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(attacker.getUniqueId()) : null;
+                
+                if (mercAllyId != null && playerAlly != null && mercAllyId.equals(playerAlly)) {
+                    isFriendly = true;
+                }
+
+                if (!isFriendly && victim.hasMetadata("td_owner_uuid")) {
+                    String ownerUuidStr = victim.getMetadata("td_owner_uuid").get(0).asString();
+                    if (ownerUuidStr.equals(attacker.getUniqueId().toString())) {
+                        isFriendly = true;
+                    }
+                }
+            }
+
+            if (isFriendly) {
                 event.setCancelled(true); // Triệt tiêu sát thương hoàn toàn
-                attacker.sendMessage(ChatColor.RED + "[Bảo vệ] Bạn không thể gây sát thương lên NPC hoặc Lính Đánh Thuê của phe mình!");
+                attacker.sendMessage(ChatColor.RED + "Bạn không thể gây sát thương lên NPC hay lính đánh thuê của phe mình");
                 attacker.playSound(attacker.getLocation(), Sound.ENTITY_VILLAGER_NO, 0.8f, 1.0f);
             }
         }
     }
-
-    /**
-     * CHO PHÉP NGƯỜI CHƠI VÀ THÁP CANH TẤN CÔNG QUÁI RAID PVE
-     */
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onPlayerAndTowerDamageRaidMob(EntityDamageByEntityEvent event) {
-        Entity victim = event.getEntity();
-        Entity damager = event.getDamager();
-
-        // Kiểm tra xem nạn nhân có phải quái raid pve không
-        boolean isRaidMob = victim.getPersistentDataContainer().has(PDCKeys.RAID_MOB_TAG, PersistentDataType.BYTE)
-                || victim.hasMetadata("td_owner_core")
-                || victim.hasMetadata("td_raid_mob");
-
-        if (!isRaidMob) return;
-
-        // Cho phép tất cả nguồn sát thương (Player, Projectile, Tháp canh) tấn công quái Raid PvE
-        // Không cancel event — handler này chỉ còn đóng vai trò nhận dạng để debug log sau này nếu cần
-    }
-
 
     /**
      * BẢO VỆ 3: CHỐNG DỊCH CHUYỂN BẰNG PISTON ĐẨY
@@ -586,7 +553,8 @@ public class CoreProtectionListener implements Listener {
         if (!(entity instanceof LivingEntity victim)) return;
 
         // Bỏ qua các quái vật tấn công của phe địch
-        if (victim.hasMetadata("td_raid_mob") || victim.hasMetadata("td_npc_attacker")) return;
+        boolean isRaidMob = victim.hasMetadata("td_raid_mob") || (PDCKeys.RAID_MOB_TAG != null && victim.getPersistentDataContainer().has(PDCKeys.RAID_MOB_TAG, PersistentDataType.BYTE));
+        if (isRaidMob || victim.hasMetadata("td_npc_attacker")) return;
 
         Location loc = victim.getLocation();
         TerritoryCore core = plugin.getCoreManager().getCoreByLocationRange(loc);
@@ -641,6 +609,25 @@ public class CoreProtectionListener implements Listener {
         if (owner != null && owner.isOnline()) {
             String victimName = victim instanceof Player ? victim.getName() : (victim.getCustomName() != null ? victim.getCustomName() : victim.getName());
             owner.sendMessage(ChatColor.YELLOW + "[Khiên Lãnh Thổ] Khiên hấp thụ " + String.format("%.1f", dmg) + " sát thương bảo hộ cho " + victimName + "! Khiên còn lại: " + String.format("%.0f", newShield) + "/" + core.getMaxShieldCapacity() + " HP.");
+        }
+    }
+
+    /**
+     * Chặn lửa phá huỷ khối (Block Burn) trên toàn bộ máy chủ.
+     */
+    @EventHandler
+    public void onBlockBurn(org.bukkit.event.block.BlockBurnEvent event) {
+        event.setCancelled(true);
+    }
+
+    /**
+     * Chặn lửa cháy lan (Block Spread) sang các khối lân cận.
+     */
+    @EventHandler
+    public void onBlockSpread(org.bukkit.event.block.BlockSpreadEvent event) {
+        Material sourceMaterial = event.getSource().getType();
+        if (sourceMaterial == Material.FIRE || sourceMaterial == Material.SOUL_FIRE) {
+            event.setCancelled(true);
         }
     }
 }

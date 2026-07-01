@@ -170,6 +170,7 @@ public class MercenaryAI extends BukkitRunnable implements Listener {
         mob.setMetadata("td_custom_entity", new FixedMetadataValue(plugin, true));
         mob.setMetadata("td_mercenary", new FixedMetadataValue(plugin, mercId.toString()));
         mob.setMetadata("td_ally_id", new FixedMetadataValue(plugin, core.getAllyId()));
+        mob.setMetadata("td_owner_uuid", new FixedMetadataValue(plugin, core.getOwnerUUID().toString()));
 
         // Ghi trực tiếp chế độ AI vào PDC của thực thể để bảo toàn dữ liệu
         PersistentDataContainer pdc = mob.getPersistentDataContainer();
@@ -195,7 +196,33 @@ public class MercenaryAI extends BukkitRunnable implements Listener {
         double scaledHp = baseHp * statMultiplierHp;
 
         // Áp dụng lượng máu tịnh tiến
-        var hpAttr = mob.getAttribute(org.bukkit.Registry.ATTRIBUTE.get(org.bukkit.NamespacedKey.minecraft("generic.max_health")));
+        org.bukkit.attribute.AttributeInstance hpAttr = null;
+        try {
+            // 1. Thử dùng Reflection để lấy Enum Attribute cho cả hai phiên bản cũ và mới
+            java.lang.reflect.Field field;
+            try {
+                field = org.bukkit.attribute.Attribute.class.getField("GENERIC_MAX_HEALTH");
+            } catch (NoSuchFieldException e) {
+                field = org.bukkit.attribute.Attribute.class.getField("MAX_HEALTH");
+            }
+            org.bukkit.attribute.Attribute attrEnum = (org.bukkit.attribute.Attribute) field.get(null);
+            hpAttr = mob.getAttribute(attrEnum);
+        } catch (Exception ignored) {}
+
+        if (hpAttr == null) {
+            try {
+                // 2. Thử dùng Registry cũ (1.20.4-1.20.6)
+                hpAttr = mob.getAttribute(org.bukkit.Registry.ATTRIBUTE.get(org.bukkit.NamespacedKey.minecraft("generic.max_health")));
+            } catch (Exception ignored) {}
+        }
+
+        if (hpAttr == null) {
+            try {
+                // 3. Thử dùng Registry mới (1.21+)
+                hpAttr = mob.getAttribute(org.bukkit.Registry.ATTRIBUTE.get(org.bukkit.NamespacedKey.minecraft("max_health")));
+            } catch (Exception ignored) {}
+        }
+
         if (hpAttr != null) {
             hpAttr.setBaseValue(scaledHp);
             mob.setHealth(scaledHp);

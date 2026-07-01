@@ -40,7 +40,12 @@ public class LightningTower extends Tower {
 
     @Override
     public int getAttackSpeedTicks() {
-        return 10; // Tốc độ bắn 0.5 giây
+        return 30; // Giãn cách bắn 1.5 giây (30 ticks)
+    }
+
+    @Override
+    public double getFepCost() {
+        return 6.0; // Tiêu hao 6.0 FEP cho tháp Điện
     }
 
     @Override
@@ -48,10 +53,10 @@ public class LightningTower extends Tower {
         // Tịnh tiến sát thương: 8.0 -> 12.0 -> 17.0 -> 24.0 -> 32.0 DMG theo cấp độ
         return switch (level) {
             case 1 -> 8.0;
-            case 2 -> 12.0;
-            case 3 -> 17.0;
-            case 4 -> 24.0;
-            case 5 -> 32.0;
+            case 2 -> 11.0;
+            case 3 -> 15.0;
+            case 4 -> 19.0;
+            case 5 -> 24.0;
             default -> 8.0;
         };
     }
@@ -81,9 +86,9 @@ public class LightningTower extends Tower {
             if (chainCount >= 5) break; // Giới hạn lan truyền 5 mục tiêu theo đúng thiết kế GDD
             if (!(entity instanceof LivingEntity living) || living.equals(target)) continue;
 
-            // Sử dụng bộ lọc đồng minh an toàn kế thừa từ lớp cha Tower
+            boolean isRaidMob = living.hasMetadata("td_raid_mob") || (com.truongcm.territorydefense.feature.core.PDCKeys.RAID_MOB_TAG != null && living.getPersistentDataContainer().has(com.truongcm.territorydefense.feature.core.PDCKeys.RAID_MOB_TAG, org.bukkit.persistence.PersistentDataType.BYTE));
             if (isValidTarget(living, core, TerritoryDefense.getInstance())
-                    || (living.hasMetadata("td_raid_mob") && !living.isDead() && living.isValid())) {
+                    || (isRaidMob && !living.isDead() && living.isValid())) {
 
                 Location nextChainLoc = living.getLocation().add(0, 1.0, 0);
 
@@ -101,6 +106,12 @@ public class LightningTower extends Tower {
      * Áp sát thương vật lý và kích hoạt hiệu ứng sấm sét âm thanh rực rỡ lên mục tiêu
      */
     private void executeLightningStrike(LivingEntity victim, double dmg) {
+        if (ownerCoreId != null) {
+            com.truongcm.territorydefense.feature.core.TerritoryCore core = TerritoryDefense.getInstance().getCoreManager().getCoreById(ownerCoreId);
+            if (core != null && core.getOwnerUUID() != null) {
+                victim.setMetadata("td_last_tower_damager_uuid", new FixedMetadataValue(TerritoryDefense.getInstance(), core.getOwnerUUID().toString()));
+            }
+        }
         victim.damage(dmg);
         // Hiệu ứng sét ảo không phá địa hình và không gây cháy rừng
         victim.getWorld().strikeLightningEffect(victim.getLocation());

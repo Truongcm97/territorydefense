@@ -199,11 +199,11 @@ public class SiegeSession implements Listener {
         new BukkitRunnable() {
             @Override
             public void run() {
-                // Kích hoạt trạng thái chiến sự PvP kéo dài đúng 30 phút
+                // Kích hoạt trạng thái chiến sự PvP kéo dài đúng 20 phút
                 activeWars.put(attackerAllyId, defenderAllyId);
-                broadcastGlobal(ChatColor.RED + "[Chiến tranh] CHIẾN SỰ GIỮA PHÂN KHU " + attackerAllyId + " VÀ " + defenderAllyId + " ĐÃ BẮT ĐẦU!");
+                broadcastGlobal(ChatColor.RED + "[Chiến tranh] CHIẾN SỰ GIỮA PHÂN KHU " + attackerAllyId + " VÀ " + defenderAllyId + " ĐÃ BẮT ĐẦU VÀ SẼ DIỄN RA TRONG 20 PHÚT!");
 
-                // Hết 30 phút, nếu phe công không chiếm được Lõi -> Kết thúc trận đấu, phe thủ thắng thành công
+                // Hết 20 phút, nếu phe công không chiếm được Lõi -> Kết thúc trận đấu, phe thủ thắng thành công
                 new BukkitRunnable() {
                     @Override
                     public void run() {
@@ -211,7 +211,7 @@ public class SiegeSession implements Listener {
                             endWar(attackerAllyId, defenderAllyId, defenderCore, false);
                         }
                     }
-                }.runTaskLater(plugin, 36000L); // 30 phút = 36000 Ticks
+                }.runTaskLater(plugin, 24000L); // 20 phút = 24000 Ticks
             }
         }.runTaskLater(plugin, 6000L); // 5 phút chuẩn bị = 6000 Ticks
     }

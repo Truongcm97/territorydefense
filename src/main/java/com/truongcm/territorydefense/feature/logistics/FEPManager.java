@@ -15,6 +15,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
@@ -38,6 +39,10 @@ public class FEPManager implements Listener {
     public FEPManager(TerritoryDefense plugin) {
         this.plugin = plugin;
         setupFoodValues();
+    }
+
+    public double getFoodFepValue(Material material) {
+        return fepValues.getOrDefault(material, 0.0);
     }
 
     /**
@@ -89,6 +94,53 @@ public class FEPManager implements Listener {
         double maxChargeRatePerSec = plugin.getConfig().getDouble("fep-settings.shield-generation.max-recharge-rate-per-second", 100.0);
 
         for (TerritoryCore core : plugin.getCoreManager().getAllActiveCores()) {
+            // 0. Tự động chuyển hóa thực phẩm từ Kho Thực Phẩm Lõi (9 Ô) thành FEP cho đến khi đầy bình chứa
+            double capacity = core.getMaxFepCapacity();
+            double fepVal = core.getFep();
+            if (fepVal < capacity) {
+                double missingFep = capacity - fepVal;
+                Inventory warehouse = core.getFoodWarehouse();
+                boolean changed = false;
+                for (int i = 0; i < warehouse.getSize(); i++) {
+                    ItemStack item = warehouse.getItem(i);
+                    if (item != null && item.getType() != Material.AIR) {
+                        double singleVal = fepValues.getOrDefault(item.getType(), 0.0);
+                        if (singleVal > 0.0) {
+                            // Áp dụng các bonus tương tự khi nạp trực tiếp bằng tay
+                            double finalVal = singleVal;
+                            ItemMeta meta = item.getItemMeta();
+                            if (meta != null && meta.getPersistentDataContainer().has(PDCKeys.SECURE_ITEM_ID, PersistentDataType.STRING)) {
+                                finalVal *= 1.2;
+                            }
+                            if (core.isMerged() && core.getMergeCount() > 0) {
+                                finalVal *= (1.0 + 0.05 * core.getMergeCount());
+                            }
+
+                            int required = (int) Math.ceil(missingFep / finalVal);
+                            int consumed = Math.min(item.getAmount(), required);
+                            if (consumed > 0) {
+                                double gained = consumed * finalVal;
+                                core.setFep(core.getFep() + gained);
+                                missingFep = capacity - core.getFep();
+                                changed = true;
+
+                                int newAmount = item.getAmount() - consumed;
+                                if (newAmount > 0) {
+                                    item.setAmount(newAmount);
+                                    warehouse.setItem(i, item);
+                                } else {
+                                    warehouse.setItem(i, null);
+                                }
+                            }
+                        }
+                    }
+                    if (missingFep <= 0.0) break;
+                }
+                if (changed) {
+                    plugin.getCoreManager().registerCore(core.getLocation(), core);
+                }
+            }
+
             // 1. Thực hiện tiêu túc năng lượng FEP cơ bản duy trì hệ thống
             double currentFep = core.getFep();
             double newFep = Math.max(0.0, currentFep - decayPerSecond);
@@ -125,6 +177,9 @@ public class FEPManager implements Listener {
                     core.setShield(currentShield + shieldGained);
                 }
             }
+            
+            // Cập nhật Hologram hiển thị năng lượng FEP động thời gian thực
+            com.truongcm.territorydefense.feature.core.HologramManager.updateCoreHologram(core);
         }
     }
 
@@ -156,7 +211,7 @@ public class FEPManager implements Listener {
     public void onCoreInteract(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
         Block block = event.getClickedBlock();
-        if (block == null || block.getType() != Material.DRAGON_EGG) return;
+        if (block == null || block.getType() != Material.CONDUIT) return;
 
         TerritoryCore core = plugin.getCoreManager().getCoreAt(block.getLocation());
         if (core == null) return;
@@ -166,9 +221,13 @@ public class FEPManager implements Listener {
         if (handItem == null || !fepValues.containsKey(handItem.getType())) return;
 
         // Xác minh quyền sở hữu hoặc liên minh của người tiếp tế
-        String playerAllyId = plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId());
-        if (core.getAllyId() == null || !core.getAllyId().equals(playerAllyId)) {
-            player.sendMessage(ChatColor.RED + "Bạn không thuộc Liên minh sở hữu Lõi này để nạp năng lượng!");
+        boolean isOwner = core.getOwnerUUID().equals(player.getUniqueId());
+        String playerAllyId = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId()) : null;
+        String coreAllyId = core.getAllyId();
+        boolean isAlly = coreAllyId != null && playerAllyId != null && coreAllyId.equalsIgnoreCase(playerAllyId);
+
+        if (!isOwner && !isAlly) {
+            player.sendMessage(ChatColor.RED + "Bạn không phải chủ sở hữu hoặc đồng minh của Lõi này để nạp năng lượng!");
             event.setCancelled(true);
             return;
         }
@@ -192,6 +251,11 @@ public class FEPManager implements Listener {
             baseFepValue *= 1.2; // Thưởng 20% hiệu suất FEP cho thực phẩm chất lượng cao tự sản xuất
         }
 
+        // Thưởng thêm % nạp PEP từ hợp nhất lãnh thổ (Ally land merge boost +5% FEP per merged core)
+        if (core.isMerged() && core.getMergeCount() > 0) {
+            baseFepValue *= (1.0 + 0.05 * core.getMergeCount());
+        }
+
         // Thực hiện khấu trừ 1 đơn vị thực phẩm trong túi đồ người chơi
         int currentAmount = handItem.getAmount();
         if (currentAmount > 1) {
@@ -205,15 +269,117 @@ public class FEPManager implements Listener {
         core.setFep(oldFep + baseFepValue);
         double actualGained = core.getFep() - oldFep;
 
+        com.truongcm.territorydefense.feature.core.HologramManager.updateCoreHologram(core);
+
         player.sendMessage(ChatColor.GREEN + "Đã tiếp nạp " + ChatColor.YELLOW + foodType.name() +
                 ChatColor.GREEN + " vào Lõi chính. Chuyển hóa thành công: " + ChatColor.AQUA +
                 String.format("%.1f", actualGained) + " FEP.");
         core.getLocation().getWorld().spawnParticle(
                 Particle.DRAGON_BREATH,
                 core.getLocation().add(0.5, 0.5, 0.5),
-                20, 0.2, 0.2, 0.2, 0.05
+                20, 0.2, 0.2, 0.2, 0.05, 1.0f
         );
         player.playSound(core.getLocation(), Sound.ENTITY_GENERIC_EAT, 1.0f, 1.0f);
         player.playSound(core.getLocation(), Sound.BLOCK_BEACON_AMBIENT, 0.8f, 1.5f);
+    }
+
+    /**
+     * Lắng nghe khi người chơi đóng kho chứa để lưu cấu hình ngay lập tức
+     */
+    @EventHandler
+    public void onInventoryClose(org.bukkit.event.inventory.InventoryCloseEvent event) {
+        org.bukkit.inventory.Inventory inv = event.getInventory();
+        for (TerritoryCore core : plugin.getCoreManager().getAllActiveCores()) {
+            if (core.getFoodWarehouse().equals(inv)) {
+                plugin.getCoreManager().registerCore(core.getLocation(), core);
+                break;
+            }
+        }
+    }
+
+    /**
+     * Ngăn chặn người chơi bỏ các vật phẩm không phải là thực phẩm vào kho 9 ô
+     */
+    @EventHandler
+    public void onFoodWarehouseClick(org.bukkit.event.inventory.InventoryClickEvent event) {
+        org.bukkit.inventory.Inventory inv = event.getInventory();
+        TerritoryCore targetCore = null;
+        for (TerritoryCore core : plugin.getCoreManager().getAllActiveCores()) {
+            if (core.getFoodWarehouse().equals(inv)) {
+                targetCore = core;
+                break;
+            }
+        }
+        if (targetCore == null) return;
+
+        // Chỉ cho phép click tương tác bỏ thực phẩm vào
+        if (event.getRawSlot() < 54 && event.getRawSlot() >= 0) {
+            ItemStack cursor = event.getCursor();
+            if (cursor != null && cursor.getType() != Material.AIR) {
+                if (!fepValues.containsKey(cursor.getType())) {
+                    event.setCancelled(true);
+                    if (event.getWhoClicked() instanceof Player p) {
+                        p.sendMessage(ChatColor.RED + "[Kho Thực Phẩm] Chỉ cho phép bỏ thực phẩm vào kho này!");
+                        p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                    }
+                    return;
+                }
+            }
+            if (event.getClick().isShiftClick()) {
+                ItemStack current = event.getCurrentItem();
+                if (current != null && current.getType() != Material.AIR) {
+                    if (!fepValues.containsKey(current.getType())) {
+                        event.setCancelled(true);
+                        if (event.getWhoClicked() instanceof Player p) {
+                            p.sendMessage(ChatColor.RED + "[Kho Thực Phẩm] Chỉ cho phép bỏ thực phẩm vào kho này!");
+                            p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                        }
+                    }
+                }
+            }
+        } else {
+            if (event.getClick().isShiftClick()) {
+                ItemStack current = event.getCurrentItem();
+                if (current != null && current.getType() != Material.AIR) {
+                    if (!fepValues.containsKey(current.getType())) {
+                        event.setCancelled(true);
+                        if (event.getWhoClicked() instanceof Player p) {
+                            p.sendMessage(ChatColor.RED + "[Kho Thực Phẩm] Chỉ cho phép bỏ thực phẩm vào kho này!");
+                            p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Hỗ trợ kéo thả chuột nạp thực phẩm nhiều ô một cách an toàn
+     */
+    @EventHandler
+    public void onFoodWarehouseDrag(org.bukkit.event.inventory.InventoryDragEvent event) {
+        org.bukkit.inventory.Inventory inv = event.getInventory();
+        TerritoryCore targetCore = null;
+        for (TerritoryCore core : plugin.getCoreManager().getAllActiveCores()) {
+            if (core.getFoodWarehouse().equals(inv)) {
+                targetCore = core;
+                break;
+            }
+        }
+        if (targetCore == null) return;
+
+        for (int slot : event.getRawSlots()) {
+            if (slot < 54) {
+                ItemStack oldCursor = event.getOldCursor();
+                if (oldCursor != null && !fepValues.containsKey(oldCursor.getType())) {
+                    event.setCancelled(true);
+                    if (event.getWhoClicked() instanceof Player p) {
+                        p.sendMessage(ChatColor.RED + "[Kho Thực Phẩm] Chỉ cho phép bỏ thực phẩm vào kho này!");
+                        p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                    }
+                    return;
+                }
+            }
+        }
     }
 }
