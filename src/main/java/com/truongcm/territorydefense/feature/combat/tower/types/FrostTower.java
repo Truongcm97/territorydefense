@@ -7,12 +7,14 @@ import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.Particle;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.Vector;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -24,35 +26,37 @@ import java.util.UUID;
  */
 public class FrostTower extends Tower {
 
+    private static final String CFG = "tower-settings.types.frost";
+
     public FrostTower(UUID towerId, Location location, UUID ownerCoreId, int level) {
         super(towerId, location, ownerCoreId, TowerType.FROST, level);
     }
 
     @Override
     public String getDisplayName() {
-        return ChatColor.BLUE + "Tháp Băng (Stray)";
+        return TerritoryDefense.getInstance().getConfig().getString(CFG + ".display-name", "&9Tháp Băng (Stray)");
     }
 
     @Override
     public double getScanningRadius() {
-        return 12.0;
+        return TerritoryDefense.getInstance().getConfig().getDouble(CFG + ".scanning-radius", 12.0);
     }
 
     @Override
     public int getAttackSpeedTicks() {
-        return 40; // 2.0 giây
+        return TerritoryDefense.getInstance().getConfig().getInt(CFG + ".attack-speed-ticks", 40);
     }
 
     @Override
     public double getDamage() {
-        // Tịnh tiến sát thương: 10.0 -> 15.0 -> 22.0 -> 30.0 -> 40.0 DMG theo cấp độ
+        FileConfiguration cfg = TerritoryDefense.getInstance().getConfig();
+        List<Double> damageList = cfg.getDoubleList(CFG + ".damage");
+        if (damageList != null && level >= 1 && level <= damageList.size()) {
+            return damageList.get(level - 1);
+        }
         return switch (level) {
-            case 1 -> 4.0;
-            case 2 -> 6.0;
-            case 3 -> 8.0;
-            case 4 -> 10.0;
-            case 5 -> 12.0;
-            default -> 4.0;
+            case 2 -> 18.0; case 3 -> 26.0; case 4 -> 36.0; case 5 -> 48.0;
+            default -> 12.0;
         };
     }
 
@@ -76,10 +80,14 @@ public class FrostTower extends Tower {
         target.damage(finalDamage);
         target.setMetadata("td_last_damaged_by_tower", new FixedMetadataValue(TerritoryDefense.getInstance(), true));
 
-        // Áp hiệu ứng làm chậm cực mạnh (Slowness II, thời gian 3 giây = 60 ticks)
-        target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 60, 1));
+        FileConfiguration cfg = TerritoryDefense.getInstance().getConfig();
+        int slowAmplifier = cfg.getInt(CFG + ".special.slow-amplifier", 1);
+        int slowDurationTicks = cfg.getInt(CFG + ".special.slow-duration-ticks", 60);
 
-        // Hiệu ứng hạt tuyết buốt giá tỏa tròn bung nở quanh mục tiêu khi trúng đòn
+        // Áp hiệu ứng làm chậm cực mạnh theo config
+        target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, slowDurationTicks, slowAmplifier));
+
+        // Hiệu ứng hạt tuyết buốt giá
         target.getWorld().spawnParticle(Particle.SNOWFLAKE, target.getLocation().add(0, 1.0, 0), 15, 0.3, 0.3, 0.3, 0.05);
         origin.getWorld().playSound(origin, Sound.BLOCK_GLASS_BREAK, 1.0f, 1.5f);
         origin.getWorld().playSound(origin, Sound.BLOCK_POWDER_SNOW_BREAK, 0.8f, 1.2f);

@@ -28,7 +28,7 @@ public class AllyTabCompleter implements TabCompleter {
 
     private final TerritoryDefense plugin;
     private final List<String> subCommands = Arrays.asList(
-            "create", "invite", "kick", "chat", "chest", "declare", "leave", "disband", "deposit", "withdraw", "merge", "list", "help"
+            "create", "invite", "kick", "chat", "chest", "declare", "leave", "disband", "merge", "help"
     );
 
     public AllyTabCompleter(TerritoryDefense plugin) {
@@ -128,13 +128,6 @@ public class AllyTabCompleter implements TabCompleter {
                     }
                     break;
 
-                case "deposit":
-                case "withdraw":
-                    // Gợi ý nhanh các mức tài chính phổ thông cho giao dịch ngân quỹ liên minh
-                    List<String> moneyAmounts = Arrays.asList("1000", "5000", "10000", "50000", "100000");
-                    StringUtil.copyPartialMatches(args[1], moneyAmounts, completions);
-                    return completions;
-
                 case "merge":
                 case "leave":
                 case "disband":
@@ -151,8 +144,6 @@ public class AllyTabCompleter implements TabCompleter {
             String sub = args[0].toLowerCase();
             switch (sub) {
                 case "declare":
-                case "deposit":
-                case "withdraw":
                 case "merge":
                     List<String> confirmOptions = Collections.singletonList("confirm");
                     StringUtil.copyPartialMatches(args[2], confirmOptions, completions);

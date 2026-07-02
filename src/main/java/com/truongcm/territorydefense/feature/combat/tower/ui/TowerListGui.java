@@ -84,8 +84,8 @@ public class TowerListGui extends CustomHolder {
             slot++;
         }
 
-        // Slot 22: Quay lại Lõi, Slot 26: Thoát ra
-        inv.setItem(22, createGuiItem(Material.ARROW, ChatColor.YELLOW + "Quay Lại Lõi", "BACK"));
+        // Slot 18: Quay lại Lõi, Slot 26: Thoát ra
+        inv.setItem(18, createGuiItem(Material.ARROW, ChatColor.YELLOW + "Quay Lại Lõi", "BACK"));
         inv.setItem(26, createGuiItem(Material.BARRIER, ChatColor.RED + "Thoát ra", "CLOSE"));
 
         return inv;

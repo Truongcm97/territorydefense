@@ -120,6 +120,11 @@ public class FarmerUpgradeGui extends CustomHolder {
         }
 
         int nextLevel = currentLevel + 1;
+        if (nextLevel > core.getLevel()) {
+            player.sendMessage(ChatColor.RED + "[Nông nghiệp] Cấp độ Nông dân không thể cao hơn cấp độ Lõi Lãnh Thổ (Lõi hiện tại Cấp " + core.getLevel() + ")!");
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            return;
+        }
         double moneyCost = plugin.getConfig().getDouble("farmer-settings.levels." + nextLevel + ".upgrade-cost", 0.0);
 
         int shardCost = switch (nextLevel) {
@@ -255,6 +260,13 @@ public class FarmerUpgradeGui extends CustomHolder {
         if (level >= 5) {
             return createGuiItem(Material.NETHER_STAR, ChatColor.GOLD + "" + ChatColor.BOLD + "Đạt Cấp Cực Đại (Cấp 5)", "NONE",
                     ChatColor.GRAY + "Tốc độ gặt lúa và năng suất FEP đã đạt mốc tối đa!"
+            );
+        }
+
+        if (nextLevel > core.getLevel()) {
+            return createGuiItem(Material.BARRIER, ChatColor.RED + "" + ChatColor.BOLD + "YÊU CẦU CẤP ĐỘ LÕI (CẤP " + nextLevel + ")", "NONE",
+                    ChatColor.GRAY + "Cấp độ Nông dân không thể vượt quá cấp độ của Lõi Lãnh Thổ.",
+                    ChatColor.GRAY + "Cấp độ Lõi hiện tại: Cấp " + core.getLevel()
             );
         }
 

@@ -77,14 +77,8 @@ public class BlueprintListGui extends CustomHolder {
             int scanLvl = scanLevels.get(originalIndex);
             boolean isBought = bought.get(originalIndex);
 
-            // Tính toán thống kê nguyên liệu
-            Map<String, Integer> materialCounts = new HashMap<>();
-            for (TerritoryCore.BlockSnapshot snap : design) {
-                materialCounts.put(snap.material, materialCounts.getOrDefault(snap.material, 0) + 1);
-            }
-
             List<String> lore = new ArrayList<>();
-            lore.add(ChatColor.YELLOW + "Nhấp chuột trái: Xây theo bản thiết kế.");
+            lore.add(ChatColor.YELLOW + "Nhấp chuột trái: Xem chi tiết và tiến hành xây dựng.");
             
             if (!isBought) {
                 lore.add(ChatColor.AQUA + "Chuột giữa: Đổi tên bản vẽ.");
@@ -94,14 +88,9 @@ public class BlueprintListGui extends CustomHolder {
             
             lore.add(ChatColor.RED + "Shift-Click / Click phải: XÓA bản vẽ này.");
             lore.add(" ");
-            lore.add(ChatColor.GOLD + "" + ChatColor.BOLD + "Danh sách block cần thiết:");
+            lore.add(ChatColor.GOLD + "Tổng khối block: " + ChatColor.GREEN + design.size() + " blocks");
 
-            for (Map.Entry<String, Integer> entry : materialCounts.entrySet()) {
-                String matName = entry.getKey().toLowerCase().replace("_", " ");
-                lore.add(ChatColor.GRAY + " - " + ChatColor.translateAlternateColorCodes('&', "&f" + matName) + ": " + ChatColor.GREEN + entry.getValue() + " block");
-            }
-
-            String displayName = ChatColor.GREEN + customName + " - Cấp " + scanLvl + " - " + design.size() + " Blocks";
+            String displayName = ChatColor.GREEN + customName + " - Cấp " + scanLvl;
             inv.setItem(guiSlot, createGuiItem(Material.WRITTEN_BOOK, displayName, "USE_SLOT_" + originalIndex, lore.toArray(new String[0])));
         }
 
@@ -112,9 +101,12 @@ public class BlueprintListGui extends CustomHolder {
         }
         
         // Nút Tạo Bản Vẽ Mới
+        int scanHeightBelow = plugin.getConfig().getInt("builder-settings.scan-height-below", 5);
+        int scanHeightAbove = plugin.getConfig().getInt("builder-settings.scan-height-above", 15);
         inv.setItem(48, createGuiItem(Material.FILLED_MAP, ChatColor.GREEN + "" + ChatColor.BOLD + "Tạo Bản Vẽ Mới", "CREATE_BLUEPRINT",
-                ChatColor.GRAY + "Quét toàn bộ lãnh thổ hiện tại",
-                ChatColor.GRAY + "và lưu thành bản vẽ mới.",
+                ChatColor.GRAY + "Quét toàn bộ lãnh thổ hiện tại.",
+                ChatColor.GRAY + "Phạm vi: Độ cao từ -" + scanHeightBelow + " đến +" + scanHeightAbove + " (tính từ Lõi),",
+                ChatColor.GRAY + "Diện tích: Toàn bộ vùng đất hình vuông lãnh thổ.",
                 ChatColor.YELLOW + "➔ Nhấp chuột để bắt đầu quét."
         ));
 
@@ -176,12 +168,7 @@ public class BlueprintListGui extends CustomHolder {
                     player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
                     return;
                 }
-                com.truongcm.territorydefense.feature.logistics.NPCBuilder builder = plugin.getBuilderManager().getActiveBuilders().get(core.getCoreId());
-                if (builder == null) {
-                    player.sendMessage(ChatColor.RED + "Bạn cần thuê Thợ Xây NPC trước khi lưu bản vẽ!");
-                    player.closeInventory();
-                    return;
-                }
+                com.truongcm.territorydefense.feature.logistics.NPCBuilder builder = plugin.getBuilderManager().getOrCreateBuilder(core.getCoreId());
                 player.closeInventory();
                 builder.startScanAndSave(core, firstEmptySlot, player);
                 return;
@@ -212,15 +199,21 @@ public class BlueprintListGui extends CustomHolder {
                     return;
                 }
 
-                // Nhấp chuột trái để xây dựng
-                com.truongcm.territorydefense.feature.logistics.NPCBuilder builder = plugin.getBuilderManager().getActiveBuilders().get(core.getCoreId());
+                // Nhấp chuột trái để xem chi tiết nguyên liệu và xác nhận
+                com.truongcm.territorydefense.feature.logistics.NPCBuilder builder = plugin.getBuilderManager().getOrCreateBuilder(core.getCoreId());
                 if (builder == null) {
                     player.sendMessage(ChatColor.RED + "Bạn cần thuê Thợ Xây NPC trước!");
-                    player.closeInventory();
                     return;
                 }
+                List<TerritoryCore.BlockSnapshot> design = core.getBlueprintSlots().get(slotIndex);
+                if (design == null || design.isEmpty()) {
+                    player.sendMessage(ChatColor.RED + "Bản vẽ này đang trống!");
+                    return;
+                }
+                String customName = core.getBlueprintNames().get(slotIndex);
                 player.closeInventory();
-                builder.startRebuild(core, core.getBlueprintSlots().get(slotIndex), player);
+                player.openInventory(new RebuildConfirmGui(plugin, core, design, customName, slotIndex, 0, true).getInventory());
+                player.playSound(player.getLocation(), Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
             }
         }
     }

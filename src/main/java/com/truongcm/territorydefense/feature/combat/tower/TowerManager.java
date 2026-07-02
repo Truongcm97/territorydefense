@@ -64,7 +64,7 @@ public class TowerManager extends BukkitRunnable implements Listener {
         this.towersConfig = YamlConfiguration.loadConfiguration(towersFile);
 
         loadAllTowers();
-        this.runTaskTimer(plugin, 120L, 5L);
+        this.runTaskTimer(plugin, 120L, 12L);
     }
 
     @Override
@@ -294,11 +294,14 @@ public class TowerManager extends BukkitRunnable implements Listener {
         saveAllTowers();
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onTowerDamageTag(EntityDamageByEntityEvent event) {
         Entity damager = event.getDamager();
         if (damager.hasMetadata("td_tower_projectile")) {
             event.getEntity().setMetadata("td_last_damaged_by_tower", new FixedMetadataValue(plugin, true));
+            if (event.getEntity() instanceof Player) {
+                event.setDamage(event.getDamage() * 0.10);
+            }
         }
     }
 
@@ -340,58 +343,172 @@ public class TowerManager extends BukkitRunnable implements Listener {
 
     public void loadAllTowers() {
         activeTowers.clear();
-        if (!towersConfig.contains("towers")) return;
 
-        ConfigurationSection section = towersConfig.getConfigurationSection("towers");
-        if (section == null) return;
+        // 1. Di trú từ file towers.yml đơn khối cũ sang thư mục lưu trữ cá nhân userdata/<UUID>/towers.yml
+        if (towersFile.exists() && towersFile.length() > 0) {
+            plugin.getLogger().warning("[TD] Phat hien tep towers.yml cu! Dang tien hanh di tru thap canh sang luu tru ca nhan...");
+            if (towersConfig.contains("towers")) {
+                ConfigurationSection section = towersConfig.getConfigurationSection("towers");
+                if (section != null) {
+                    for (String key : section.getKeys(false)) {
+                        String path = "towers." + key;
+                        try {
+                            UUID towerId = UUID.fromString(key);
+                            String worldName = towersConfig.getString(path + ".world");
+                            double x = towersConfig.getDouble(path + ".x");
+                            double y = towersConfig.getDouble(path + ".y");
+                            double z = towersConfig.getDouble(path + ".z");
+
+                            World world = Bukkit.getWorld(worldName);
+                            if (world == null) continue;
+
+                            Location loc = new Location(world, x, y, z);
+                            UUID ownerCoreId = UUID.fromString(towersConfig.getString(path + ".owner-core"));
+                            Tower.TowerType type = Tower.TowerType.valueOf(towersConfig.getString(path + ".type"));
+                            int level = towersConfig.getInt(path + ".level", 1);
+
+                            Tower tower = createTowerInstance(towerId, loc, ownerCoreId, type, level);
+                            activeTowers.put(loc, tower);
+                        } catch (Exception e) {
+                            plugin.getLogger().severe("[TD] Loi di tru thap canh cu " + key + ": " + e.getMessage());
+                        }
+                    }
+                }
+            }
+            // Thực hiện ghi lại toàn bộ tháp canh đang hoạt động vào từng thư mục riêng của người chơi
+            saveAllTowers();
+
+            // Sao lưu và đổi tên file cũ tránh việc di trú lặp lại
+            File migratedBackup = new File(plugin.getDataFolder(), "towers_migrated_backup.yml");
+            if (towersFile.renameTo(migratedBackup)) {
+                plugin.getLogger().info("[TD] Da sao luu towers.yml cu thanh towers_migrated_backup.yml");
+            } else {
+                towersFile.delete();
+            }
+            return;
+        }
+
+        // 2. Nạp dữ liệu tháp canh phân mảnh từ các thư mục userdata/<UUID>/towers.yml
+        File userDataDir = new File(plugin.getDataFolder(), "userdata");
+        if (!userDataDir.exists()) return;
+
+        File[] dirs = userDataDir.listFiles(File::isDirectory);
+        if (dirs == null) return;
 
         int loadedCount = 0;
-        for (String key : section.getKeys(false)) {
-            String path = "towers." + key;
+        for (File dir : dirs) {
+            String dirName = dir.getName();
             try {
-                UUID towerId = UUID.fromString(key);
-                String worldName = towersConfig.getString(path + ".world");
-                double x = towersConfig.getDouble(path + ".x");
-                double y = towersConfig.getDouble(path + ".y");
-                double z = towersConfig.getDouble(path + ".z");
+                UUID ownerUUID = UUID.fromString(dirName);
+                File pTowersFile = new File(dir, "towers.yml");
+                if (pTowersFile.exists() && pTowersFile.length() > 0) {
+                    YamlConfiguration pTowersConfig = YamlConfiguration.loadConfiguration(pTowersFile);
+                    if (pTowersConfig.contains("towers")) {
+                        ConfigurationSection section = pTowersConfig.getConfigurationSection("towers");
+                        if (section != null) {
+                            for (String key : section.getKeys(false)) {
+                                String path = "towers." + key;
+                                try {
+                                    UUID towerId = UUID.fromString(key);
+                                    String worldName = pTowersConfig.getString(path + ".world");
+                                    double x = pTowersConfig.getDouble(path + ".x");
+                                    double y = pTowersConfig.getDouble(path + ".y");
+                                    double z = pTowersConfig.getDouble(path + ".z");
 
-                World world = Bukkit.getWorld(worldName);
-                if (world == null) continue;
+                                    World world = Bukkit.getWorld(worldName);
+                                    if (world == null) continue;
 
-                Location loc = new Location(world, x, y, z);
-                UUID ownerCoreId = UUID.fromString(towersConfig.getString(path + ".owner-core"));
-                Tower.TowerType type = Tower.TowerType.valueOf(towersConfig.getString(path + ".type"));
-                int level = towersConfig.getInt(path + ".level", 1);
+                                    Location loc = new Location(world, x, y, z);
+                                    UUID ownerCoreId = UUID.fromString(pTowersConfig.getString(path + ".owner-core"));
+                                    Tower.TowerType type = Tower.TowerType.valueOf(pTowersConfig.getString(path + ".type"));
+                                    int level = pTowersConfig.getInt(path + ".level", 1);
 
-                Tower tower = createTowerInstance(towerId, loc, ownerCoreId, type, level);
-                activeTowers.put(loc, tower);
-                loadedCount++;
-            } catch (Exception e) {
-                plugin.getLogger().severe("[TD] Lỗi phục hồi tháp canh " + key + ": " + e.getMessage());
+                                    Tower tower = createTowerInstance(towerId, loc, ownerCoreId, type, level);
+                                    activeTowers.put(loc, tower);
+                                    loadedCount++;
+                                } catch (Exception e) {
+                                    plugin.getLogger().severe("[TD] Loi phuc hoi thap canh " + key + " cua nguoi choi " + ownerUUID + ": " + e.getMessage());
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Bỏ qua thư mục không khớp định dạng UUID
             }
         }
-        plugin.getLogger().info("[TD] Đã khôi phục thành công " + loadedCount + " tháp canh đang hoạt động.");
+        plugin.getLogger().info("[TD] Da khoi phuc thanh cong " + loadedCount + " tháp canh dang hoat dong tu userdata.");
     }
 
     public void saveAllTowers() {
-        towersConfig.set("towers", null);
-        for (Map.Entry<Location, Tower> entry : activeTowers.entrySet()) {
-            Location loc = entry.getKey();
-            Tower tower = entry.getValue();
-            String path = "towers." + tower.getTowerId().toString();
+        // Phân nhóm tháp canh theo UUID của người chơi sở hữu Lõi tương ứng
+        Map<UUID, List<Tower>> playerTowers = new HashMap<>();
 
-            towersConfig.set(path + ".world", loc.getWorld().getName());
-            towersConfig.set(path + ".x", loc.getBlockX());
-            towersConfig.set(path + ".y", loc.getBlockY());
-            towersConfig.set(path + ".z", loc.getBlockZ());
-            towersConfig.set(path + ".owner-core", tower.getOwnerCoreId().toString());
-            towersConfig.set(path + ".type", tower.getType().name());
-            towersConfig.set(path + ".level", tower.getLevel());
+        for (Tower tower : activeTowers.values()) {
+            UUID ownerCoreId = tower.getOwnerCoreId();
+            TerritoryCore core = plugin.getCoreManager().getCoreById(ownerCoreId);
+            UUID ownerUUID = null;
+            if (core != null) {
+                ownerUUID = core.getOwnerUUID();
+            }
+            if (ownerUUID == null) {
+                plugin.getLogger().warning("[TD] Khong the tim thay chu so huu cho thap canh: " + tower.getTowerId() + " (Core ID: " + ownerCoreId + ").");
+                continue;
+            }
+            playerTowers.computeIfAbsent(ownerUUID, k -> new ArrayList<>()).add(tower);
         }
-        try {
-            towersConfig.save(towersFile);
-        } catch (IOException e) {
-            plugin.getLogger().severe("[TD] Không thể ghi dữ liệu lưu trữ vào towers.yml!");
+
+        File userDataDir = new File(plugin.getDataFolder(), "userdata");
+        if (!userDataDir.exists()) {
+            userDataDir.mkdirs();
+        }
+
+        // Dọn dẹp/xóa các file towers.yml của người chơi không còn tháp canh nào hoạt động
+        File[] dirs = userDataDir.listFiles(File::isDirectory);
+        if (dirs != null) {
+            for (File dir : dirs) {
+                try {
+                    UUID ownerUUID = UUID.fromString(dir.getName());
+                    File pTowersFile = new File(dir, "towers.yml");
+                    if (pTowersFile.exists() && !playerTowers.containsKey(ownerUUID)) {
+                        pTowersFile.delete();
+                    }
+                } catch (IllegalArgumentException ignored) {}
+            }
+        }
+
+        // Lưu tháp canh của từng người chơi vào file towers.yml riêng biệt
+        for (Map.Entry<UUID, List<Tower>> entry : playerTowers.entrySet()) {
+            UUID ownerUUID = entry.getKey();
+            List<Tower> towers = entry.getValue();
+
+            File playerDir = new File(userDataDir, ownerUUID.toString());
+            if (!playerDir.exists()) {
+                playerDir.mkdirs();
+            }
+
+            File pTowersFile = new File(playerDir, "towers.yml");
+            YamlConfiguration pTowersConfig = new YamlConfiguration();
+            pTowersConfig.set("towers", null);
+
+            for (Tower tower : towers) {
+                Location loc = tower.getLocation();
+                String path = "towers." + tower.getTowerId().toString();
+
+                pTowersConfig.set(path + ".world", loc.getWorld().getName());
+                pTowersConfig.set(path + ".x", loc.getBlockX());
+                pTowersConfig.set(path + ".y", loc.getBlockY());
+                pTowersConfig.set(path + ".z", loc.getBlockZ());
+                pTowersConfig.set(path + ".owner-core", tower.getOwnerCoreId().toString());
+                pTowersConfig.set(path + ".type", tower.getType().name());
+                pTowersConfig.set(path + ".level", tower.getLevel());
+            }
+
+            try {
+                pTowersConfig.save(pTowersFile);
+            } catch (IOException e) {
+                plugin.getLogger().severe("[TD] Khong the ghi du lieu thap canh vao " + pTowersFile.getAbsolutePath());
+            }
         }
     }
 

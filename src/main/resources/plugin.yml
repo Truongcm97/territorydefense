@@ -36,7 +36,7 @@ commands:
       - core
       - lanhtho
     permission: territorydefense.use
-    usage: "/territory [boundary|accepttax|migrate|getstarter|recall|help|resetstarter <player>|resetdifficulty <player>|recall <player>|getcore|rebuildholograms]"
+    usage: "/territory [boundary|accepttax|migrate|getstarter|recall|help|resetstarter <player>|resetdifficulty <player>|getcore|rebuildholograms|rebuildhlg|copydesign|saochep|shareblueprint|chiase|sellblueprint|banbanve]"
   ally:
     description: "Quản trị liên minh và các tính năng tương tác PvP."
     aliases:

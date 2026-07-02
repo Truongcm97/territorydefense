@@ -1,12 +1,15 @@
 package com.truongcm.territorydefense.feature.combat.tower.types;
 
+import com.truongcm.territorydefense.TerritoryDefense;
 import com.truongcm.territorydefense.feature.combat.tower.Tower;
 import com.truongcm.territorydefense.feature.core.TerritoryCore;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Sound;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.LivingEntity;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -18,34 +21,36 @@ import java.util.UUID;
  */
 public class SpellTower extends Tower {
 
+    private static final String CFG = "tower-settings.types.spell";
+
     public SpellTower(UUID towerId, Location location, UUID ownerCoreId, int level) {
         super(towerId, location, ownerCoreId, TowerType.SPELL, level);
     }
 
     @Override
     public String getDisplayName() {
-        return ChatColor.DARK_PURPLE + "Tháp Phép (Witch)";
+        return TerritoryDefense.getInstance().getConfig().getString(CFG + ".display-name", "&5Tháp Phép (Witch)");
     }
 
     @Override
     public double getScanningRadius() {
-        return 10.0; // Bán kính buff hào quang 10 block theo GDD
+        return TerritoryDefense.getInstance().getConfig().getDouble(CFG + ".scanning-radius", 12.0);
     }
 
     @Override
     public int getAttackSpeedTicks() {
-        return 100; // 5.0 giây
+        return TerritoryDefense.getInstance().getConfig().getInt(CFG + ".attack-speed-ticks", 100);
     }
 
     @Override
     public double getDamage() {
-        // Tỷ lệ gia tăng sát thương buff: 5% -> 8% -> 12% -> 15% -> 20% theo cấp độ
+        FileConfiguration cfg = TerritoryDefense.getInstance().getConfig();
+        List<Integer> buffList = cfg.getIntegerList(CFG + ".damage-buff-percent");
+        if (buffList != null && level >= 1 && level <= buffList.size()) {
+            return buffList.get(level - 1) / 100.0;
+        }
         return switch (level) {
-            case 1 -> 0.05;
-            case 2 -> 0.08;
-            case 3 -> 0.12;
-            case 4 -> 0.15;
-            case 5 -> 0.20;
+            case 2 -> 0.08; case 3 -> 0.12; case 4 -> 0.15; case 5 -> 0.20;
             default -> 0.05;
         };
     }

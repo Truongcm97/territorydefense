@@ -52,8 +52,8 @@ public class BuilderUpgradeGui extends CustomHolder {
         // Slot 13: Nút Nâng Cấp Thợ xây
         inv.setItem(13, getUpgradeButtonItem());
 
-        // Slot 15: Nút sa thải Thợ xây
-        inv.setItem(15, getDismissButtonItem());
+        // Slot 15: Nút dừng sửa chữa khẩn cấp thợ xây
+        inv.setItem(15, getStopRebuildButtonItem());
 
         // Slot 22: Quay lại menu chính
         inv.setItem(22, createGuiItem(Material.ARROW, ChatColor.YELLOW + "Quay Lại Lõi", "BACK"));
@@ -92,6 +92,12 @@ public class BuilderUpgradeGui extends CustomHolder {
         }
 
         int nextLevel = currentLevel + 1;
+        if (nextLevel > core.getLevel()) {
+            return createGuiItem(Material.BARRIER, ChatColor.RED + "" + ChatColor.BOLD + "YÊU CẦU CẤP ĐỘ LÕI (CẤP " + nextLevel + ")", "NONE",
+                    ChatColor.GRAY + "Cấp độ Thợ xây không thể vượt quá cấp độ của Lõi Lãnh Thổ.",
+                    ChatColor.GRAY + "Cấp độ Lõi hiện tại: Cấp " + core.getLevel()
+            );
+        }
         double moneyCost = getUpgradeCostMoney(currentLevel);
         int shardCost = getUpgradeCostShards(currentLevel);
         int nextSpeed = switch (nextLevel) {
@@ -114,27 +120,17 @@ public class BuilderUpgradeGui extends CustomHolder {
         );
     }
 
-    private ItemStack getDismissButtonItem() {
-        int level = core.getBuilderLevel();
-        double totalSpentMoney = 150000.0; // Tiền gốc thuê
-        int totalSpentShards = 15;
-
-        for (int i = 1; i < level; i++) {
-            totalSpentMoney += getUpgradeCostMoney(i);
-            totalSpentShards += getUpgradeCostShards(i);
+    private ItemStack getStopRebuildButtonItem() {
+        if (builder.isRebuilding()) {
+            return createGuiItem(Material.REDSTONE_BLOCK, ChatColor.RED + "" + ChatColor.BOLD + "DỪNG TÁI THIẾT KHẨN CẤP", "STOP_REBUILD",
+                    ChatColor.GRAY + "Dừng ngay lập tức tiến trình tái thiết.",
+                    ChatColor.GRAY + "Thợ xây sẽ quay về Lõi và dừng đặt khối.",
+                    " ",
+                    ChatColor.YELLOW + "➔ Click để DỪNG tiến trình xây dựng!"
+            );
+        } else {
+            return createGuiItem(Material.GRAY_STAINED_GLASS_PANE, " ", "NONE");
         }
-
-        double refundMoney = totalSpentMoney * 0.5;
-        int refundShards = (int) Math.round(totalSpentShards * 0.5);
-
-        return createGuiItem(Material.REDSTONE_BLOCK, ChatColor.RED + "" + ChatColor.BOLD + "Sa Thải Thợ Xây NPC", "DISMISS_BUILDER",
-                ChatColor.GRAY + "Đuổi việc Thợ xây và nhận lại 50% chi phí:",
-                ChatColor.GOLD + " - Hoàn trả Xu: +" + String.format("%,.0f", refundMoney) + " Xu",
-                ChatColor.AQUA + " - Hoàn trả Shards: +" + refundShards + " Shards (cộng vào Lõi)",
-                " ",
-                ChatColor.RED + "⚠ Lưu ý: NPC này sẽ biến mất khỏi Lãnh thổ!",
-                ChatColor.YELLOW + "➔ Click để xác nhận sa thải."
-        );
     }
 
     private double getUpgradeCostMoney(int fromLevel) {
@@ -182,6 +178,13 @@ public class BuilderUpgradeGui extends CustomHolder {
                 int currentLevel = core.getBuilderLevel();
                 if (currentLevel >= 5) return;
 
+                int nextLevel = currentLevel + 1;
+                if (nextLevel > core.getLevel()) {
+                    player.sendMessage(ChatColor.RED + "[Kiến Thiết] Cấp độ Thợ xây không thể cao hơn cấp độ Lõi Lãnh Thổ (Lõi hiện tại Cấp " + core.getLevel() + ")!");
+                    player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                    return;
+                }
+
                 double costMoney = getUpgradeCostMoney(currentLevel);
                 int costShards = getUpgradeCostShards(currentLevel);
 
@@ -214,10 +217,12 @@ public class BuilderUpgradeGui extends CustomHolder {
                 return;
             }
 
-            if (action.equalsIgnoreCase("DISMISS_BUILDER")) {
+            if (action.equalsIgnoreCase("STOP_REBUILD")) {
+                builder.cancelRebuild();
+                player.sendMessage(ChatColor.RED + "[Kiến Thiết] Đã dừng khẩn cấp tiến trình tái thiết của Thợ Xây!");
+                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
                 player.closeInventory();
-                player.openInventory(new BuilderDismissConfirmGui(plugin, builder, core).getInventory());
-                player.playSound(player.getLocation(), Sound.BLOCK_BARREL_OPEN, 1.0f, 1.0f);
+                return;
             }
         }
     }

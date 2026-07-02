@@ -126,34 +126,57 @@ public class RaidSession implements Listener {
             int radius = plugin.getCoreManager().getCoreRadius(core);
             int scanHeightBelow = plugin.getConfig().getInt("builder-settings.scan-height-below", 5);
             int scanHeightAbove = plugin.getConfig().getInt("builder-settings.scan-height-above", 15);
-            int minY = coreLoc.getBlockY() - scanHeightBelow;
-            int maxY = coreLoc.getBlockY() + scanHeightAbove;
+            class LocationDelta {
+                final int dx, dy, dz;
+                LocationDelta(int dx, int dy, int dz) {
+                    this.dx = dx;
+                    this.dy = dy;
+                    this.dz = dz;
+                }
+            }
+
+            Queue<LocationDelta> scanQueue = new LinkedList<>();
+            for (int dy = -scanHeightBelow; dy <= scanHeightAbove; dy++) {
+                for (int dx = -radius; dx <= radius; dx++) {
+                    for (int dz = -radius; dz <= radius; dz++) {
+                        scanQueue.add(new LocationDelta(dx, dy, dz));
+                    }
+                }
+            }
 
             new BukkitRunnable() {
-                int currentY = minY;
+                private static final int BLOCKS_PER_TICK = 1500;
+
                 @Override
                 public void run() {
-                    if (!activeCampaigns.containsKey(coreId) || currentY > maxY) {
+                    if (!activeCampaigns.containsKey(coreId)) {
                         cancel();
                         return;
                     }
-                    int centerX = coreLoc.getBlockX();
-                    int centerZ = coreLoc.getBlockZ();
-                    for (int dx = -radius; dx <= radius; dx++) {
-                        for (int dz = -radius; dz <= radius; dz++) {
-                            if (dx * dx + dz * dz <= radius * radius) {
-                                Block block = coreLoc.getWorld().getBlockAt(centerX + dx, currentY, centerZ + dz);
-                                Material type = block.getType();
-                                if (type != Material.AIR && type != Material.CAVE_AIR && type != Material.VOID_AIR && type != Material.CONDUIT) {
-                                    String blockDataStr = block.getBlockData().getAsString();
-                                    TerritoryCore.BlockSnapshot snap = new TerritoryCore.BlockSnapshot(dx, currentY - coreLoc.getBlockY(), dz, type.name(), blockDataStr);
-                                    campaign.getPreRaidSnapshot().add(snap);
-                                    builder.getLastPreRaidSnapshot().add(snap);
-                                }
-                            }
+
+                    int processed = 0;
+                    while (!scanQueue.isEmpty() && processed < BLOCKS_PER_TICK) {
+                        LocationDelta delta = scanQueue.poll();
+                        Block block = coreLoc.getWorld().getBlockAt(
+                            coreLoc.getBlockX() + delta.dx, 
+                            coreLoc.getBlockY() + delta.dy, 
+                            coreLoc.getBlockZ() + delta.dz
+                        );
+                        Material type = block.getType();
+                        if (type != Material.AIR && type != Material.CAVE_AIR && type != Material.VOID_AIR && type != Material.CONDUIT) {
+                            String blockDataStr = block.getBlockData().getAsString();
+                            TerritoryCore.BlockSnapshot snap = new TerritoryCore.BlockSnapshot(
+                                delta.dx, delta.dy, delta.dz, type.name(), blockDataStr
+                            );
+                            campaign.getPreRaidSnapshot().add(snap);
+                            builder.getLastPreRaidSnapshot().add(snap);
                         }
+                        processed++;
                     }
-                    currentY++;
+
+                    if (scanQueue.isEmpty()) {
+                        cancel();
+                    }
                 }
             }.runTaskTimer(plugin, 1L, 1L);
         }
@@ -267,15 +290,43 @@ public class RaidSession implements Listener {
         private final org.bukkit.boss.BossBar bossBar;
         private int totalWaveMobs = 0;
         private long waveStartTime = 0;
-        private final long waveDurationLimitMillis = 10 * 60 * 1000L; // Giới hạn 10 phút mỗi wave
+        private final long waveDurationLimitMillis;
         private final List<TerritoryCore.BlockSnapshot> preRaidSnapshot = new java.util.ArrayList<>();
+
+        private final Map<UUID, Integer> waveDirectShards = new java.util.concurrent.ConcurrentHashMap<>();
+        private final Map<UUID, Integer> waveHarvestedShards = new java.util.concurrent.ConcurrentHashMap<>();
+        private final Map<UUID, Double> waveCoinsEarned = new java.util.concurrent.ConcurrentHashMap<>();
+        private final Map<UUID, Integer> waveMobsContributed = new java.util.concurrent.ConcurrentHashMap<>();
+        private final Map<UUID, Integer> waveMobsMissed = new java.util.concurrent.ConcurrentHashMap<>();
+
+        public void addWaveDirectShards(UUID playerUuid, int amount) {
+            waveDirectShards.put(playerUuid, waveDirectShards.getOrDefault(playerUuid, 0) + amount);
+        }
+
+        public void addWaveHarvestedShards(UUID playerUuid, int amount) {
+            waveHarvestedShards.put(playerUuid, waveHarvestedShards.getOrDefault(playerUuid, 0) + amount);
+        }
+
+        public void addWaveCoinsEarned(UUID playerUuid, double amount) {
+            waveCoinsEarned.put(playerUuid, waveCoinsEarned.getOrDefault(playerUuid, 0.0) + amount);
+        }
+
+        public void incrementWaveMobsContributed(UUID playerUuid) {
+            waveMobsContributed.put(playerUuid, waveMobsContributed.getOrDefault(playerUuid, 0) + 1);
+        }
+
+        public void incrementWaveMobsMissed(UUID playerUuid) {
+            waveMobsMissed.put(playerUuid, waveMobsMissed.getOrDefault(playerUuid, 0) + 1);
+        }
 
         public List<TerritoryCore.BlockSnapshot> getPreRaidSnapshot() {
             return preRaidSnapshot;
         }
 
         public void cleanup() {
+            java.util.List<Player> playersToReset = new java.util.ArrayList<>();
             if (bossBar != null) {
+                playersToReset.addAll(bossBar.getPlayers());
                 try {
                     bossBar.removeAll();
                 } catch (Exception ignored) {}
@@ -290,10 +341,16 @@ public class RaidSession implements Listener {
             synchronized (aliveMobs) {
                 for (Entity mob : aliveMobs) {
                     if (mob.isValid()) {
+                        removeNoCollision(mob);
                         mob.remove();
                     }
                 }
                 aliveMobs.clear();
+            }
+            for (Player player : playersToReset) {
+                try {
+                    player.setScoreboard(Bukkit.getScoreboardManager().getNewScoreboard());
+                } catch (Exception ignored) {}
             }
         }
 
@@ -301,6 +358,9 @@ public class RaidSession implements Listener {
             this.core = core;
             this.isPurchased = isPurchased;
             this.purchasedIndex = purchasedIndex;
+            // Đọc giới hạn thời gian wave từ config
+            int waveMinutes = plugin.getConfig().getInt("raid-settings.wave-duration-limit-minutes", 10);
+            this.waveDurationLimitMillis = (long) waveMinutes * 60 * 1000L;
             // Cấp 5 có 5 Wave, các cấp còn lại có 3 Wave theo GDD
             this.maxWaves = (core.getLevel() == 5) ? 5 : 3;
 
@@ -320,9 +380,121 @@ public class RaidSession implements Listener {
                         return;
                     }
                     tickMobAI();
-                    updateBossBar();
                 }
             }.runTaskTimer(plugin, 20L, 20L);
+
+            // Khởi chạy vòng lặp cập nhật UI (BossBar & Scoreboard): Chạy mỗi 2 giây (40 ticks)
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    if (!activeCampaigns.containsKey(core.getCoreId())) {
+                        cancel();
+                        return;
+                    }
+                    updateBossBar();
+                }
+            }.runTaskTimer(plugin, 20L, 40L);
+        }
+
+        private void updateMobCustomName(org.bukkit.entity.LivingEntity mob) {
+            try {
+                double maxHp = mob.getMaxHealth();
+                double currentHp = mob.getHealth();
+                if (mob.hasMetadata("td_intended_max_hp") && mob.hasMetadata("td_actual_max_hp")) {
+                    double intended = mob.getMetadata("td_intended_max_hp").get(0).asDouble();
+                    double actual = mob.getMetadata("td_actual_max_hp").get(0).asDouble();
+                    if (actual > 0) {
+                        maxHp = intended;
+                        currentHp = mob.getHealth() * (intended / actual);
+                    }
+                }
+                mob.setCustomName(ChatColor.RED + "Quái Công Thành [HP: " + String.format("%.0f", Math.max(0.0, currentHp)) + "/" + String.format("%.0f", maxHp) + "]");
+                mob.setCustomNameVisible(true);
+            } catch (Throwable ignored) {}
+        }
+
+        private void updateRaidScoreboard(Player player) {
+            try {
+                org.bukkit.scoreboard.ScoreboardManager manager = Bukkit.getScoreboardManager();
+                org.bukkit.scoreboard.Scoreboard board = player.getScoreboard();
+                
+                if (board == manager.getMainScoreboard() || board.getObjective("td_raid_sb") == null) {
+                    board = manager.getNewScoreboard();
+                }
+
+                org.bukkit.scoreboard.Objective obj = board.getObjective("td_raid_sb");
+                if (obj == null) {
+                    obj = board.registerNewObjective("td_raid_sb", "dummy", ChatColor.translateAlternateColorCodes('&', "&e&lRaid Lãnh Thổ"));
+                    obj.setDisplaySlot(org.bukkit.scoreboard.DisplaySlot.SIDEBAR);
+                }
+
+                for (String entry : board.getEntries()) {
+                    board.resetScores(entry);
+                }
+
+                UUID pUuid = player.getUniqueId();
+                int kills = waveMobsContributed.getOrDefault(pUuid, 0);
+                double coins = waveCoinsEarned.getOrDefault(pUuid, 0.0);
+                int shards = waveDirectShards.getOrDefault(pUuid, 0) + waveHarvestedShards.getOrDefault(pUuid, 0);
+
+                int remaining = aliveMobs.size() + pendingSpawnQueue.size();
+                long elapsed = System.currentTimeMillis() - waveStartTime;
+                long remainingTimeSeconds = Math.max(0, (waveDurationLimitMillis - elapsed) / 1000);
+                String timeStr = String.format("%02d:%02d", remainingTimeSeconds / 60, remainingTimeSeconds % 60);
+
+                List<String> lines = new ArrayList<>();
+                lines.add(ChatColor.GRAY + "----------------------");
+                lines.add(ChatColor.GOLD + "● Trạng thái Lõi:");
+                lines.add(ChatColor.WHITE + "  Máu Lõi: " + ChatColor.GREEN + String.format("%.0f", core.getTempHealth()) + ChatColor.GRAY + "/" + String.format("%.0f", core.getMaxShieldCapacity()));
+                lines.add(ChatColor.WHITE + "  Giáp ảo: " + ChatColor.AQUA + String.format("%.0f", core.getShield()));
+                lines.add(ChatColor.WHITE + "  PEP (FEP): " + ChatColor.LIGHT_PURPLE + String.format("%.0f", core.getFep()) + ChatColor.GRAY + "/" + String.format("%.0f", core.getMaxFepCapacity()));
+                lines.add(ChatColor.GOLD + "● Trạng thái Wave:");
+                lines.add(ChatColor.WHITE + "  Đợt Raid: " + ChatColor.YELLOW + currentWave + ChatColor.GRAY + "/" + maxWaves);
+                lines.add(ChatColor.WHITE + "  Quái còn lại: " + ChatColor.RED + remaining);
+                lines.add(ChatColor.WHITE + "  Hết giờ: " + ChatColor.WHITE + timeStr);
+                lines.add(ChatColor.GOLD + "● Chiến tích của bạn:");
+                lines.add(ChatColor.WHITE + "  Tiêu diệt: " + ChatColor.GREEN + kills + " quái");
+                lines.add(ChatColor.GOLD + "● Phần thưởng tạm tính:");
+                lines.add(ChatColor.WHITE + "  Tiền vàng: " + ChatColor.YELLOW + String.format("%.1f", coins) + " Xu");
+                lines.add(ChatColor.WHITE + "  Shards nhận: " + ChatColor.AQUA + shards + " Shards");
+                lines.add(ChatColor.GRAY + "---------------------- ");
+
+                int score = lines.size();
+                for (String line : lines) {
+                    obj.getScore(line).setScore(score);
+                    score--;
+                }
+
+                player.setScoreboard(board);
+            } catch (Throwable t) {
+                plugin.getLogger().warning("Lỗi cập nhật Scoreboard cho " + player.getName() + ": " + t.getMessage());
+            }
+        }
+
+        private void applyNoCollision(LivingEntity mob) {
+            try {
+                org.bukkit.scoreboard.Scoreboard scoreboard = Bukkit.getScoreboardManager().getMainScoreboard();
+                org.bukkit.scoreboard.Team team = scoreboard.getTeam("td_raid_team");
+                if (team == null) {
+                    team = scoreboard.registerNewTeam("td_raid_team");
+                    team.setOption(org.bukkit.scoreboard.Team.Option.COLLISION_RULE, org.bukkit.scoreboard.Team.OptionStatus.NEVER);
+                }
+                team.addEntry(mob.getUniqueId().toString());
+            } catch (Throwable ignored) {}
+        }
+
+        private void removeNoCollision(Entity mob) {
+            try {
+                org.bukkit.scoreboard.Scoreboard scoreboard = Bukkit.getScoreboardManager().getMainScoreboard();
+                org.bukkit.scoreboard.Team team = scoreboard.getTeam("td_raid_team");
+                if (team != null) {
+                    team.removeEntry(mob.getUniqueId().toString());
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        private boolean isFlyingMob(LivingEntity mob) {
+            return isFlyingMobType(mob.getType());
         }
 
         private void tickMobAI() {
@@ -330,59 +502,96 @@ public class RaidSession implements Listener {
                 for (Entity entity : aliveMobs) {
                     if (!(entity instanceof org.bukkit.entity.Mob mob) || !mob.isValid()) continue;
 
+                    // Định kỳ đồng bộ Custom Name hiển thị máu ảo
+                    updateMobCustomName(mob);
+
                     Location mobLoc = mob.getLocation();
                     Location coreLoc = core.getLocation();
 
                     // Ép quái di chuyển công phá Lõi
-                    mob.getPathfinder().moveTo(coreLoc, 1.25D);
+                    double distToCore = mobLoc.distance(coreLoc);
+                    boolean isFlying = isFlyingMob(mob);
 
-                    // AI phá vật cản: Tìm khối block cản đường phía trước hoặc dọc đường đi đến Lõi
-                    org.bukkit.util.Vector direction = coreLoc.toVector().subtract(mobLoc.toVector()).normalize();
-                    // Kiểm tra block ở tầm mắt hoặc chân
-                    for (double d = 0.5; d <= 1.5; d += 0.5) {
-                        Location checkLoc = mobLoc.clone().add(direction.clone().multiply(d));
-                        org.bukkit.block.Block block = checkLoc.getBlock();
-                        if (block.getType().isSolid() && block.getType() != Material.CONDUIT && block.getType() != Material.BEDROCK) {
-                            // Tích lũy sát thương phá block
-                            int breakTicks = mob.getMetadata("td_break_ticks").stream().findFirst().map(m -> m.asInt()).orElse(0);
-                            if (breakTicks >= 3) {
-                                block.getWorld().spawnParticle(org.bukkit.Particle.BLOCK, block.getLocation().add(0.5, 0.5, 0.5), 15, block.getBlockData());
-                                block.getWorld().playSound(block.getLocation(), Sound.ENTITY_ZOMBIE_BREAK_WOODEN_DOOR, 1.0f, 1.0f);
-                                block.setType(Material.AIR);
-                                mob.setMetadata("td_break_ticks", new org.bukkit.metadata.FixedMetadataValue(plugin, 0));
+                    if (isFlying) {
+                        if (distToCore > 1.0) {
+                            org.bukkit.util.Vector flyDir = coreLoc.toVector().subtract(mobLoc.toVector()).normalize();
+                            mob.setVelocity(flyDir.multiply(0.35D));
+                        }
+                    } else {
+                        // Tối ưu hóa TPS: Chỉ tính toán lại đường đi (pathfinding) mỗi 3 giây cho mỗi thực thể, 
+                        // phân bổ so le tải trọng CPU dựa trên Entity ID để tránh lag giật tick đột ngột
+                        long secondCounter = System.currentTimeMillis() / 1000;
+                        boolean shouldPathfind = (mob.getEntityId() + secondCounter) % 3 == 0;
+                        
+                        if (shouldPathfind) {
+                            if (distToCore > 3.0) {
+                                if (mob.getType() == org.bukkit.entity.EntityType.SLIME || mob.getType() == org.bukkit.entity.EntityType.MAGMA_CUBE) {
+                                    org.bukkit.util.Vector slimeDir = coreLoc.toVector().subtract(mobLoc.toVector()).normalize();
+                                    float yaw = (float) Math.toDegrees(Math.atan2(-slimeDir.getX(), slimeDir.getZ()));
+                                    mob.setRotation(yaw, mob.getLocation().getPitch());
+                                    if (mob.isOnGround()) {
+                                        mob.setVelocity(slimeDir.multiply(0.2D).setY(0.3D));
+                                    }
+                                } else {
+                                    mob.getPathfinder().moveTo(coreLoc, 1.25D);
+                                }
                             } else {
-                                block.getWorld().spawnParticle(org.bukkit.Particle.CRIT, block.getLocation().add(0.5, 0.5, 0.5), 5);
-                                block.getWorld().playSound(block.getLocation(), Sound.ENTITY_ZOMBIE_ATTACK_WOODEN_DOOR, 0.5f, 1.2f);
-                                mob.setMetadata("td_break_ticks", new org.bukkit.metadata.FixedMetadataValue(plugin, breakTicks + 1));
+                                mob.getPathfinder().moveTo(coreLoc, 1.25D);
                             }
-                            break;
+                        }
+                    }
+
+                    // Tối ưu hóa AI phá khối vật cản và xử lý kẹt: Chạy so le mỗi 2 giây dựa trên Entity ID
+                    boolean shouldCheckBlocksAndStuck = (mob.getEntityId() + System.currentTimeMillis() / 1000) % 2 == 0;
+                    double coreAttackRange = plugin.getConfig().getDouble("raid-settings.core-attack-range", 4.0);
+                    int mobAiAttackInterval = plugin.getConfig().getInt("raid-settings.mob-ai-attack-interval-ticks", 20);
+                    int blockBreakThreshold = plugin.getConfig().getInt("raid-settings.block-break-ticks-threshold", 3);
+                    double stuckDistThreshold = plugin.getConfig().getDouble("raid-settings.stuck-distance-threshold", 0.2);
+                    int stuckSecondsThreshold = plugin.getConfig().getInt("raid-settings.stuck-seconds-threshold", 2);
+                    
+                    if (shouldCheckBlocksAndStuck) {
+                        // AI phá vật cản: Tìm khối block cản đường phía trước hoặc dọc đường đi đến Lõi
+                        org.bukkit.util.Vector direction = coreLoc.toVector().subtract(mobLoc.toVector()).normalize();
+                        for (double d = 0.5; d <= 1.5; d += 0.5) {
+                            Location checkLoc = mobLoc.clone().add(direction.clone().multiply(d));
+                            org.bukkit.block.Block block = checkLoc.getBlock();
+                            if (block.getType().isSolid() && block.getType() != Material.CONDUIT && block.getType() != Material.BEDROCK) {
+                                int breakTicks = mob.getMetadata("td_break_ticks").stream().findFirst().map(m -> m.asInt()).orElse(0);
+                                if (breakTicks >= blockBreakThreshold) {
+                                    block.getWorld().spawnParticle(org.bukkit.Particle.BLOCK, block.getLocation().add(0.5, 0.5, 0.5), 15, block.getBlockData());
+                                    block.getWorld().playSound(block.getLocation(), Sound.ENTITY_ZOMBIE_BREAK_WOODEN_DOOR, 1.0f, 1.0f);
+                                    block.setType(Material.AIR);
+                                    mob.setMetadata("td_break_ticks", new org.bukkit.metadata.FixedMetadataValue(plugin, 0));
+                                } else {
+                                    block.getWorld().spawnParticle(org.bukkit.Particle.CRIT, block.getLocation().add(0.5, 0.5, 0.5), 5);
+                                    block.getWorld().playSound(block.getLocation(), Sound.ENTITY_ZOMBIE_ATTACK_WOODEN_DOOR, 0.5f, 1.2f);
+                                    mob.setMetadata("td_break_ticks", new org.bukkit.metadata.FixedMetadataValue(plugin, breakTicks + 1));
+                                }
+                                break;
+                            }
                         }
                     }
 
                     // Khoảng cách tới Lõi
                     double distance = mobLoc.distance(coreLoc);
-                    if (distance <= 4.0) {
-                        // Tấn công trực tiếp vào Lõi (Không phá block, tấn công tempHealth)
+                    if (distance <= coreAttackRange) {
                         int damageTicks = mob.getMetadata("td_attack_ticks").stream().findFirst().map(m -> m.asInt()).orElse(0);
-                        if (damageTicks >= 20) { // Mỗi 1 giây tấn công 1 lần
+                        if (damageTicks >= mobAiAttackInterval) {
                             mob.setMetadata("td_attack_ticks", new org.bukkit.metadata.FixedMetadataValue(plugin, 0));
                             
-                            // Gây sát thương vào Lõi
-                            double damage = 50.0; // Sát thương mặc định
-                            if (mob.getType() == EntityType.GIANT) damage = 300.0;
-                            else if (mob.getType() == EntityType.RAVAGER) damage = 150.0;
+                            double damage = plugin.getConfig().getDouble("raid-settings.mob-core-damage.DEFAULT", 50.0);
+                            if (mob.getType() == EntityType.GIANT) damage = plugin.getConfig().getDouble("raid-settings.mob-core-damage.GIANT", 300.0);
+                            else if (mob.getType() == EntityType.RAVAGER) damage = plugin.getConfig().getDouble("raid-settings.mob-core-damage.RAVAGER", 150.0);
 
                             double currentHealth = core.getTempHealth();
                             double newHealth = Math.max(0.0, currentHealth - damage);
                             core.setTempHealth(newHealth);
 
-                            // Hiệu ứng cắn phá Lõi
                             coreLoc.getWorld().spawnParticle(org.bukkit.Particle.DAMAGE_INDICATOR, coreLoc.clone().add(0.5, 0.5, 0.5), 10, 0.2, 0.2, 0.2, 0.1);
                             coreLoc.getWorld().playSound(coreLoc, Sound.ENTITY_ZOMBIE_ATTACK_IRON_DOOR, 1.0f, 1.0f);
 
                             broadcastToAlliance(core, ChatColor.RED + "[Cảnh báo] Lõi đang bị " + mob.getName() + ChatColor.RED + " cắn phá! HP Lõi còn lại: " + String.format("%.0f", newHealth) + "/" + core.getMaxShieldCapacity());
 
-                            // Nếu cạn máu -> Thất bại
                             if (newHealth <= 0.0) {
                                 new BukkitRunnable() {
                                     @Override
@@ -397,51 +606,49 @@ public class RaidSession implements Listener {
                         }
                     }
 
-                    // --- KIỂM TRA BỊ KẸT HOẶC LỌT HỐ SÂU ---
-                    Location lastLoc = mob.hasMetadata("td_last_loc") ? (Location) mob.getMetadata("td_last_loc").get(0).value() : null;
-                    int stuckSeconds = mob.hasMetadata("td_stuck_seconds") ? mob.getMetadata("td_stuck_seconds").get(0).asInt() : 0;
+                    if (shouldCheckBlocksAndStuck) {
+                        // --- KIỂM TRA BỊ KẸT HOẶC LỌT HỐ SÂU ---
+                        Location lastLoc = mob.hasMetadata("td_last_loc") ? (Location) mob.getMetadata("td_last_loc").get(0).value() : null;
+                        int stuckSeconds = mob.hasMetadata("td_stuck_seconds") ? mob.getMetadata("td_stuck_seconds").get(0).asInt() : 0;
 
-                    if (lastLoc != null && lastLoc.getWorld() != null && lastLoc.getWorld().equals(mobLoc.getWorld()) && mobLoc.distance(lastLoc) < 0.2) {
-                        stuckSeconds++;
-                    } else {
-                        stuckSeconds = 0;
-                    }
-                    mob.setMetadata("td_last_loc", new org.bukkit.metadata.FixedMetadataValue(plugin, mobLoc.clone()));
-                    mob.setMetadata("td_stuck_seconds", new org.bukkit.metadata.FixedMetadataValue(plugin, stuckSeconds));
+                        if (lastLoc != null && lastLoc.getWorld() != null && lastLoc.getWorld().equals(mobLoc.getWorld()) && mobLoc.distance(lastLoc) < stuckDistThreshold) {
+                            stuckSeconds += 2;
+                        } else {
+                            stuckSeconds = 0;
+                        }
+                        mob.setMetadata("td_last_loc", new org.bukkit.metadata.FixedMetadataValue(plugin, mobLoc.clone()));
+                        mob.setMetadata("td_stuck_seconds", new org.bukkit.metadata.FixedMetadataValue(plugin, stuckSeconds));
 
-                    if (stuckSeconds >= 2) {
-                        // Bỏ qua cơ chế đặt block nếu là quái biết bay hoặc lơ lửng
-                        boolean isFlyingMob = mob instanceof org.bukkit.entity.Flying || 
-                                              mob instanceof org.bukkit.entity.Vex || 
-                                              mob instanceof org.bukkit.entity.Blaze || 
-                                              mob instanceof org.bukkit.entity.Wither ||
-                                              mob instanceof org.bukkit.entity.EnderDragon ||
-                                              mob.getType().name().equals("ALLAY") ||
-                                              mob.getType().name().equals("BAT") ||
-                                              mob.getType().name().equals("BEE") ||
-                                              mob.getType().name().equals("PARROT") ||
-                                              mob.getType().name().equals("PHANTOM") ||
-                                              mob.getType().name().equals("GHAST");
+                        if (stuckSeconds >= stuckSecondsThreshold * 2) {
+                            if (isFlying) {
+                                if (stuckSeconds >= 6) {
+                                    org.bukkit.util.Vector stuckDirection = coreLoc.toVector().subtract(mobLoc.toVector()).normalize();
+                                    Location newLoc = mobLoc.clone().add(stuckDirection.multiply(1.5));
+                                    if (newLoc.getY() > newLoc.getWorld().getMinHeight() && newLoc.getY() < newLoc.getWorld().getMaxHeight()) {
+                                        mob.teleport(newLoc);
+                                        mob.setMetadata("td_stuck_seconds", new org.bukkit.metadata.FixedMetadataValue(plugin, 0));
+                                    }
+                                }
+                            } else {
+                                org.bukkit.block.Block feetBlock = mobLoc.getBlock();
+                                org.bukkit.block.Block belowBlock = feetBlock.getRelative(org.bukkit.block.BlockFace.DOWN);
 
-                        if (!isFlyingMob) {
-                            org.bukkit.block.Block feetBlock = mobLoc.getBlock();
-                            org.bukkit.block.Block belowBlock = feetBlock.getRelative(org.bukkit.block.BlockFace.DOWN);
+                                org.bukkit.util.Vector stuckDirection = coreLoc.toVector().subtract(mobLoc.toVector()).normalize();
+                                Location checkLoc = mobLoc.clone().add(stuckDirection.multiply(1.2));
+                                org.bukkit.block.Block frontFeetBlock = checkLoc.getBlock();
+                                org.bukkit.block.Block frontHeadBlock = checkLoc.clone().add(0, 1, 0).getBlock();
 
-                            org.bukkit.util.Vector stuckDirection = coreLoc.toVector().subtract(mobLoc.toVector()).normalize();
-                            Location checkLoc = mobLoc.clone().add(stuckDirection.multiply(1.2));
-                            org.bukkit.block.Block frontFeetBlock = checkLoc.getBlock();
-                            org.bukkit.block.Block frontHeadBlock = checkLoc.clone().add(0, 1, 0).getBlock();
+                                boolean isHole = feetBlock.getType().isAir() || feetBlock.isLiquid() || belowBlock.getType().isAir() || belowBlock.isLiquid();
+                                boolean isFrontBlocked = frontFeetBlock.getType().isSolid() || frontHeadBlock.getType().isSolid();
 
-                            boolean isHole = feetBlock.getType().isAir() || feetBlock.isLiquid() || belowBlock.getType().isAir() || belowBlock.isLiquid();
-                            boolean isFrontBlocked = frontFeetBlock.getType().isSolid() || frontHeadBlock.getType().isSolid();
-
-                            if (isHole || isFrontBlocked) {
-                                if (!feetBlock.getType().isSolid() && feetBlock.getType() != Material.CONDUIT) {
-                                    feetBlock.setType(Material.DIRT);
-                                    mob.teleport(mobLoc.clone().add(0, 1.0, 0));
-                                    feetBlock.getWorld().playSound(feetBlock.getLocation(), Sound.BLOCK_GRAVEL_PLACE, 1.0f, 1.0f);
-                                    stuckSeconds = 0;
-                                    mob.setMetadata("td_stuck_seconds", new org.bukkit.metadata.FixedMetadataValue(plugin, stuckSeconds));
+                                if (isHole || isFrontBlocked) {
+                                    if (!feetBlock.getType().isSolid() && feetBlock.getType() != Material.CONDUIT) {
+                                        feetBlock.setType(Material.DIRT);
+                                        mob.teleport(mobLoc.clone().add(0, 1.0, 0));
+                                        feetBlock.getWorld().playSound(feetBlock.getLocation(), Sound.BLOCK_GRAVEL_PLACE, 1.0f, 1.0f);
+                                        stuckSeconds = 0;
+                                        mob.setMetadata("td_stuck_seconds", new org.bukkit.metadata.FixedMetadataValue(plugin, stuckSeconds));
+                                    }
                                 }
                             }
                         }
@@ -485,13 +692,22 @@ public class RaidSession implements Listener {
             if (isPurchased) {
                 dynamicMult = plugin.getConfig().getDouble("raid-settings.dynamic-multiplier." + purchasedIndex, 1.2);
             }
-            // Sức mạnh quái tăng 20% mỗi lần call, và quái mạnh thêm 5% cho mỗi trận PvE Raid đã diễn ra
-            double callScaling = Math.pow(1.20, core.getRaidCallCount());
-            double totalRaidScaling = Math.pow(1.05, core.getTotalRaidCount());
+            // Sức mạnh quái tăng theo call count và total raid count — đọc từ config
+            double callScalingFactor = plugin.getConfig().getDouble("raid-settings.call-scaling-factor", 1.20);
+            double totalRaidScalingFactor = plugin.getConfig().getDouble("raid-settings.total-raid-scaling-factor", 1.05);
+            double callScaling = Math.pow(callScalingFactor, core.getRaidCallCount());
+            double totalRaidScaling = Math.pow(totalRaidScalingFactor, core.getTotalRaidCount());
             double finalHpMultiplier = staticMult * dynamicMult * callScaling * totalRaidScaling;
 
             double radius = core.getRadius();
             Location cLoc = core.getLocation();
+
+            // Định nghĩa sẵn 1 hoặc 2 góc spawn làm "cổng tấn công" cho toàn bộ wave này
+            int spawnPointsCount = (Math.random() < 0.5) ? 1 : 2;
+            double[] spawnAngles = new double[spawnPointsCount];
+            for (int k = 0; k < spawnPointsCount; k++) {
+                spawnAngles[k] = Math.random() * Math.PI * 2;
+            }
 
             spawnCompleted = false; // Reset flag khi bắt đầu wave mới
             spawnTask = new BukkitRunnable() {
@@ -503,7 +719,8 @@ public class RaidSession implements Listener {
                         spawnCompleted = true; // Đánh dấu spawn queue đã hoàn tất
                         // Nếu tất cả quái đã chết trong lúc spawn, kích hoạt wave tiếp theo
                         if (aliveMobs.isEmpty() && activeCampaigns.containsKey(core.getCoreId())) {
-                            broadcastToAlliance(core, ChatColor.GREEN + "Đã quét sạch đợt " + currentWave + ". Hồi sức chuẩn bị đợt kế tiếp sau 45 giây!");
+                            sendWaveSummary();
+                            broadcastToAlliance(core, ChatColor.GREEN + "Đã quét sạch đợt " + currentWave + ". Hồi sức chuẩn bị đợt kế tiếp sau " + (plugin.getConfig().getInt("raid-settings.wave-delay-ticks", 900) / 20) + " giây!");
                             core.getLocation().getWorld().playSound(core.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
                             new BukkitRunnable() {
                                 @Override
@@ -512,91 +729,133 @@ public class RaidSession implements Listener {
                                         launchNextWave();
                                     }
                                 }
-                            }.runTaskLater(plugin, 900L);
+                            }.runTaskLater(plugin, (long) plugin.getConfig().getInt("raid-settings.wave-delay-ticks", 900));
                         }
                         return;
                     }
 
-                    // Mỗi đợt dãn cách chỉ spawn 3 - 5 con theo GDD để bảo vệ tài nguyên
-                    int spawnCountThisTick = Math.min(pendingSpawnQueue.size(), 3 + (int)(Math.random() * 3));
+                    // Đọc batch size từ config
+                    int batchMin = plugin.getConfig().getInt("raid-settings.spawn-batch-min", 3);
+                    int batchMax = plugin.getConfig().getInt("raid-settings.spawn-batch-max", 5);
+                    int spawnCountThisTick = Math.min(pendingSpawnQueue.size(), batchMin + (int)(Math.random() * (batchMax - batchMin + 1)));
                     for (int i = 0; i < spawnCountThisTick; i++) {
                         if (pendingSpawnQueue.isEmpty()) break;
                         EntityType type = pendingSpawnQueue.remove(0);
 
-                        // Tính toán tọa độ spawn hình tròn nằm ở rìa ranh giới bảo vệ (bán kính r + 3)
-                        double angle = Math.random() * Math.PI * 2;
-                        double spawnX = cLoc.getX() + (radius + 3.0) * Math.cos(angle);
-                        double spawnZ = cLoc.getZ() + (radius + 3.0) * Math.sin(angle);
+                        boolean isFlying = isFlyingMobType(type);
+                        
+                        // Lấy ngẫu nhiên một trong số các góc tấn công được xác định trước cho wave này
+                        double baseAngle = spawnAngles[(int) (Math.random() * spawnAngles.length)];
+                        // Thêm một dao động góc nhỏ (±0.25 rad ~ ±15 độ) để phân bổ quái thành một toán quân
+                        double angle = baseAngle + (Math.random() * 0.5 - 0.25);
+                        
+                        double spawnDistance = radius + 1.0; // Cách lãnh thổ đúng 1 block
 
-                        // Đảm bảo Chunk được tải để tìm cao độ an toàn chính xác
-                        org.bukkit.World world = cLoc.getWorld();
-                        if (world != null) {
-                            int chunkX = (int) spawnX >> 4;
-                            int chunkZ = (int) spawnZ >> 4;
-                            if (!world.isChunkLoaded(chunkX, chunkZ)) {
-                                world.getChunkAt(chunkX, chunkZ).load();
-                            }
+                        Location spawnLoc = findSmartSpawnLocation(cLoc, spawnDistance, angle, isFlying);
+                        boolean success = spawnSingleMob(type, spawnLoc, finalHpMultiplier);
+                        if (!success) {
+                            pendingSpawnQueue.add(0, type);
                         }
-
-                        // SỬA LỖI 1: Quét tìm khối block cứng an toàn gần cao độ của Lõi để chống quái kẹt nóc/Void
-                        double spawnY = findSafeSpawnY(cLoc, spawnX, spawnZ);
-
-                        Location spawnLoc = new Location(cLoc.getWorld(), spawnX, spawnY, spawnZ);
-                        spawnSingleMob(type, spawnLoc, finalHpMultiplier);
                     }
                 }
             };
-            spawnTask.runTaskTimer(plugin, 0L, 40L); // 40 ticks = 2 giây
+            spawnTask.runTaskTimer(plugin, 0L, (long) plugin.getConfig().getInt("raid-settings.spawn-interval-ticks", 40));
         }
 
         /**
-         * Thuật toán tìm kiếm bề mặt đứng vững an toàn xung quanh cao độ Lõi
-         * Chạy vòng lặp quét từ độ cao Lõi lên/xuống tối đa 16 Block để tìm không gian trống cao 2 block rỗng
+         * Nhận diện thực thể bay trong Raid để tối ưu hóa độ cao spawn
          */
-        private double findSafeSpawnY(Location coreLoc, double x, double z) {
-            org.bukkit.World world = coreLoc.getWorld();
-            if (world == null) return coreLoc.getY();
+        private boolean isFlyingMobType(EntityType type) {
+            String name = type.name();
+            return name.equals("VEX") || 
+                   name.equals("BLAZE") || 
+                   name.equals("WITHER") ||
+                   name.equals("ENDER_DRAGON") ||
+                   name.equals("ALLAY") ||
+                   name.equals("BAT") ||
+                   name.equals("BEE") ||
+                   name.equals("PARROT") ||
+                   name.equals("PHANTOM") ||
+                   name.equals("GHAST");
+        }
 
-            int startY = coreLoc.getBlockY();
-            // Quét luân phiên lên và xuống để tìm điểm đáp đất gần cao độ Lõi nhất
-            for (int dy = 0; dy <= 16; dy++) {
-                // Quét phía trên
-                int checkY = startY + dy;
-                if (checkY < world.getMaxHeight() - 1) {
-                    org.bukkit.block.Block feet = world.getBlockAt((int) x, checkY, (int) z);
-                    org.bukkit.block.Block head = world.getBlockAt((int) x, checkY + 1, (int) z);
-                    org.bukkit.block.Block ground = world.getBlockAt((int) x, checkY - 1, (int) z);
-                    if (feet.getType().isAir() && head.getType().isAir() && ground.getType().isSolid()) {
-                        return checkY;
-                    }
+        /**
+         * Tìm vị trí spawn thông minh chống kẹt, cách lãnh thổ đúng khoảng cách chỉ định (1 block).
+         * Đối với quái thường, quét cao độ để tìm điểm đáp đất cứng rỗng 2 block.
+         * Đối với quái bay, tìm vị trí lơ lửng trên không.
+         * Nếu góc chỉ định bị bít kín địa hình, tự động thử xoay 8 góc xung quanh.
+         */
+        private Location findSmartSpawnLocation(Location coreLoc, double targetDistance, double initialAngle, boolean isFlying) {
+            org.bukkit.World world = coreLoc.getWorld();
+            if (world == null) return coreLoc.clone().add(0, 5, 0);
+
+            for (int attempt = 0; attempt < 8; attempt++) {
+                double angle = initialAngle + (attempt * (Math.PI / 4)); // Thử xoay 45 độ mỗi lần
+                double x = coreLoc.getX() + targetDistance * Math.cos(angle);
+                double z = coreLoc.getZ() + targetDistance * Math.sin(angle);
+
+                int chunkX = (int) x >> 4;
+                int chunkZ = (int) z >> 4;
+                if (!world.isChunkLoaded(chunkX, chunkZ)) {
+                    world.getChunkAt(chunkX, chunkZ).load();
                 }
 
-                // Quét phía dưới (nếu dy > 0)
-                if (dy > 0) {
-                    checkY = startY - dy;
-                    if (checkY > world.getMinHeight()) {
-                        org.bukkit.block.Block feet = world.getBlockAt((int) x, checkY, (int) z);
-                        org.bukkit.block.Block head = world.getBlockAt((int) x, checkY + 1, (int) z);
-                        org.bukkit.block.Block ground = world.getBlockAt((int) x, checkY - 1, (int) z);
-                        if (feet.getType().isAir() && head.getType().isAir() && ground.getType().isSolid()) {
-                            return checkY;
+                if (isFlying) {
+                    int highestY = world.getHighestBlockYAt((int) x, (int) z);
+                    double y = highestY + 10.0;
+                    if (y > world.getMaxHeight() - 5) {
+                        y = world.getMaxHeight() - 5;
+                    }
+                    org.bukkit.block.Block feet = world.getBlockAt((int) x, (int) y, (int) z);
+                    org.bukkit.block.Block head = world.getBlockAt((int) x, (int) y + 1, (int) z);
+                    if (feet.getType().isAir() && head.getType().isAir()) {
+                        return new Location(world, x, y, z);
+                    }
+                } else {
+                    int startY = coreLoc.getBlockY();
+                    for (int dy = 0; dy <= 16; dy++) {
+                        int checkY = startY + dy;
+                        if (checkY < world.getMaxHeight() - 1) {
+                            org.bukkit.block.Block feet = world.getBlockAt((int) x, checkY, (int) z);
+                            org.bukkit.block.Block head = world.getBlockAt((int) x, checkY + 1, (int) z);
+                            org.bukkit.block.Block ground = world.getBlockAt((int) x, checkY - 1, (int) z);
+                            if (feet.getType().isAir() && head.getType().isAir() && ground.getType().isSolid()) {
+                                return new Location(world, x, checkY, z);
+                            }
+                        }
+                        if (dy > 0) {
+                            int checkYDown = startY - dy;
+                            if (checkYDown > world.getMinHeight()) {
+                                org.bukkit.block.Block feet = world.getBlockAt((int) x, checkYDown, (int) z);
+                                org.bukkit.block.Block head = world.getBlockAt((int) x, checkYDown + 1, (int) z);
+                                org.bukkit.block.Block ground = world.getBlockAt((int) x, checkYDown - 1, (int) z);
+                                if (feet.getType().isAir() && head.getType().isAir() && ground.getType().isSolid()) {
+                                    return new Location(world, x, checkYDown, z);
+                                }
+                            }
                         }
                     }
                 }
             }
 
-            // Nếu không tìm thấy đất trống an toàn, fallback dùng độ cao bề mặt hoặc cao độ Lõi gốc
-            try {
-                return world.getHighestBlockYAt((int) x, (int) z) + 1.0;
-            } catch (Exception e) {
-                return coreLoc.getY();
+            double fallbackX = coreLoc.getX() + targetDistance * Math.cos(initialAngle);
+            double fallbackZ = coreLoc.getZ() + targetDistance * Math.sin(initialAngle);
+            if (isFlying) {
+                return new Location(world, fallbackX, coreLoc.getY() + 10.0, fallbackZ);
+            } else {
+                try {
+                    int highestY = world.getHighestBlockYAt((int) fallbackX, (int) fallbackZ);
+                    return new Location(world, fallbackX, highestY + 1.0, fallbackZ);
+                } catch (Exception e) {
+                    return new Location(world, fallbackX, coreLoc.getY(), fallbackZ);
+                }
             }
         }
 
         /**
          * Triệu hồi một thực thể quái cụ thể và đóng dấu PDC an toàn tuyệt đối.
          */
-        private void spawnSingleMob(EntityType type, Location loc, double hpMultiplier) {
+        private boolean spawnSingleMob(EntityType type, Location loc, double hpMultiplier) {
             LivingEntity mob = null;
             try {
                 // Thử spawn với SpawnReason.RAID để vượt qua bộ lọc chặn tự nhiên của các plugin bảo vệ khác
@@ -610,7 +869,7 @@ public class RaidSession implements Listener {
 
             if (mob == null || !mob.isValid()) {
                 getLogger().warning("[Raid] Triệu hồi quái vật loại " + type.name() + " thất bại hoặc bị hủy bởi hệ thống/plugin khác tại " + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ());
-                return;
+                return false;
             }
 
             // Đóng cờ Metadata để hệ thống dễ quản lý và chống hack
@@ -656,13 +915,102 @@ public class RaidSession implements Listener {
                 } catch (Throwable ignored) {}
             }
 
+            // Ghi nhận Metadata máu ảo cho quái vật để phục vụ cho CombatDamageTracker
+            try {
+                double actualHp = mob.getMaxHealth();
+                org.bukkit.attribute.AttributeInstance maxHealthAttr = null;
+                try {
+                    java.lang.reflect.Field field = org.bukkit.attribute.Attribute.class.getField("GENERIC_MAX_HEALTH");
+                    org.bukkit.attribute.Attribute attrEnum = (org.bukkit.attribute.Attribute) field.get(null);
+                    maxHealthAttr = mob.getAttribute(attrEnum);
+                } catch (Throwable ignored) {}
+                if (maxHealthAttr == null) {
+                    try {
+                        maxHealthAttr = mob.getAttribute(org.bukkit.Registry.ATTRIBUTE.get(org.bukkit.NamespacedKey.minecraft("generic.max_health")));
+                    } catch (Throwable ignored) {}
+                }
+                if (maxHealthAttr != null) {
+                    actualHp = maxHealthAttr.getValue();
+                }
+                if (actualHp <= 0) actualHp = mob.getMaxHealth();
+                mob.setMetadata("td_intended_max_hp", new FixedMetadataValue(plugin, scaledHp));
+                mob.setMetadata("td_actual_max_hp", new FixedMetadataValue(plugin, actualHp));
+            } catch (Throwable ignored) {}
+
+            // Tắt va chạm (chống kẹt lẫn nhau) không ảnh hưởng CPU server
+            applyNoCollision(mob);
+
             // Gắn tên hiển thị chuyên nghiệp
-            mob.setCustomName(ChatColor.RED + "Quái Công Thành [HP: " + String.format("%.0f", scaledHp) + "]");
-            mob.setCustomNameVisible(true);
+            updateMobCustomName(mob);
 
             // Đăng ký bể theo dõi đóng góp sát thương phòng AFK
             plugin.getCombatDamageTracker().registerRaidMob(mob, scaledHp);
             aliveMobs.add(mob);
+            return true;
+        }
+
+        private void sendWaveSummary() {
+            java.util.Set<UUID> participants = new java.util.HashSet<>();
+            participants.addAll(waveDirectShards.keySet());
+            participants.addAll(waveHarvestedShards.keySet());
+            participants.addAll(waveCoinsEarned.keySet());
+            participants.addAll(waveMobsContributed.keySet());
+            participants.addAll(waveMobsMissed.keySet());
+
+            // Thêm cả các thành viên liên minh online để họ nắm thông tin
+            List<UUID> members = plugin.getAllianceManager().getAllianceMembers(core.getAllyId());
+            for (UUID mUuid : members) {
+                Player p = Bukkit.getPlayer(mUuid);
+                if (p != null && p.isOnline()) {
+                    participants.add(mUuid);
+                }
+            }
+
+            for (UUID pUuid : participants) {
+                Player player = Bukkit.getPlayer(pUuid);
+                if (player == null || !player.isOnline()) continue;
+
+                int directShards = waveDirectShards.getOrDefault(pUuid, 0);
+                int harvestedShards = waveHarvestedShards.getOrDefault(pUuid, 0);
+                double coins = waveCoinsEarned.getOrDefault(pUuid, 0.0);
+                int contributed = waveMobsContributed.getOrDefault(pUuid, 0);
+                int missed = waveMobsMissed.getOrDefault(pUuid, 0);
+
+                // Nếu người chơi này không tham gia đánh phát nào và không nhận được gì thì bỏ qua, tránh làm phiền
+                if (directShards == 0 && harvestedShards == 0 && coins == 0.0 && contributed == 0 && missed == 0) {
+                    continue;
+                }
+
+                player.sendMessage(ChatColor.DARK_GRAY + "========================================");
+                player.sendMessage(ChatColor.GOLD + "   ★ TỔNG HỢP CHIẾN TÍCH ĐỢT " + currentWave + " ★");
+                player.sendMessage("");
+                player.sendMessage(ChatColor.YELLOW + "  ● Trạng thái phòng thủ:");
+                player.sendMessage(ChatColor.GRAY + "    ↳ Số quái tiêu diệt đạt chuẩn đóng góp: " + ChatColor.GREEN + contributed);
+                if (missed > 0) {
+                    player.sendMessage(ChatColor.GRAY + "    ↳ Số quái không đạt ngưỡng đóng góp (15%): " + ChatColor.RED + missed);
+                }
+                player.sendMessage("");
+                player.sendMessage(ChatColor.YELLOW + "  ● Phần thưởng đã nhận:");
+                if (directShards > 0) {
+                    player.sendMessage(ChatColor.GRAY + "    ↳ Nhận trực tiếp: " + ChatColor.AQUA + "+" + directShards + " Shards");
+                }
+                if (harvestedShards > 0) {
+                    player.sendMessage(ChatColor.GRAY + "    ↳ Nạp tự động vào Lõi: " + ChatColor.LIGHT_PURPLE + "+" + harvestedShards + " Shards");
+                }
+                if (coins > 0) {
+                    player.sendMessage(ChatColor.GRAY + "    ↳ Tiền vàng (Kinh tế Vault): " + ChatColor.GOLD + "+" + String.format("%.1f", coins) + " Xu");
+                }
+                player.sendMessage(ChatColor.DARK_GRAY + "========================================");
+                
+                player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.1f);
+            }
+
+            // Reset chuẩn bị cho Wave tiếp theo
+            waveDirectShards.clear();
+            waveHarvestedShards.clear();
+            waveCoinsEarned.clear();
+            waveMobsContributed.clear();
+            waveMobsMissed.clear();
         }
 
         /**
@@ -670,12 +1018,16 @@ public class RaidSession implements Listener {
          */
         public void registerMobKill(Entity entity) {
             aliveMobs.remove(entity);
+            removeNoCollision(entity);
 
             // SỬA LỖI WAVE 2: Dùng spawnCompleted thay vì spawnTask == null để tránh race condition
             // (spawnTask.cancel() không đồng bộ, spawnTask chưa kịp null khi con quái cuối chết)
             if (aliveMobs.isEmpty() && pendingSpawnQueue.isEmpty() && spawnCompleted) {
+                // Gửi bảng tóm tắt
+                sendWaveSummary();
+
                 // Wave thành công! Chờ 45 giây đếm ngược hồi sức
-                broadcastToAlliance(core, ChatColor.GREEN + "Đã quét sạch đợt " + currentWave + ". Hồi sức chuẩn bị đợt kế tiếp sau 45 giây!");
+                broadcastToAlliance(core, ChatColor.GREEN + "Đã quét sạch đợt " + currentWave + ". Hồi sức chuẩn bị đợt kế tiếp sau " + (plugin.getConfig().getInt("raid-settings.wave-delay-ticks", 900) / 20) + " giây!");
                 core.getLocation().getWorld().playSound(core.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
 
                 new BukkitRunnable() {
@@ -685,7 +1037,7 @@ public class RaidSession implements Listener {
                             launchNextWave();
                         }
                     }
-                }.runTaskLater(plugin, 900L); // 45 giây = 900 Ticks
+                }.runTaskLater(plugin, (long) plugin.getConfig().getInt("raid-settings.wave-delay-ticks", 900));
             }
         }
 
@@ -696,8 +1048,10 @@ public class RaidSession implements Listener {
             pendingSpawnQueue.clear();
             int lvl = core.getLevel();
 
-            // Tính số lượng quái tịnh tiến theo công thức: 25 * Cấp Lõi ^ 1.75
-            int expectedTotal = (int) (25 * Math.pow(lvl, 1.75));
+            // Tính số lượng quái tịnh tiến theo công thức: base * Cấp Lõi ^ power (cấu hình từ config)
+            double waveBase = plugin.getConfig().getDouble("raid-settings.wave-mob-formula-base", 25);
+            double wavePower = plugin.getConfig().getDouble("raid-settings.wave-mob-formula-power", 1.75);
+            int expectedTotal = (int) (waveBase * Math.pow(lvl, wavePower));
 
             // Xây dựng danh sách quái phân bổ theo cấu hình bảng GDD từng cấp Lõi
             if (lvl == 1) {
@@ -765,9 +1119,13 @@ public class RaidSession implements Listener {
             }
 
             for (UUID memberUuid : members) {
+                if (memberUuid.equals(core.getOwnerUUID())) continue;
                 Player player = Bukkit.getPlayer(memberUuid);
                 if (player != null && player.isOnline()) {
-                    currentWatchers.add(player);
+                    TerritoryCore standingCore = plugin.getCoreManager().getCoreByLocationRange(player.getLocation());
+                    if (standingCore != null && standingCore.getCoreId().equals(core.getCoreId())) {
+                        currentWatchers.add(player);
+                    }
                 }
             }
 
@@ -776,9 +1134,11 @@ public class RaidSession implements Listener {
                     if (!bossBar.getPlayers().contains(player)) {
                         bossBar.addPlayer(player);
                     }
+                    updateRaidScoreboard(player);
                 } else {
                     if (bossBar.getPlayers().contains(player)) {
                         bossBar.removePlayer(player);
+                        player.setScoreboard(Bukkit.getScoreboardManager().getNewScoreboard());
                     }
                 }
             }
@@ -814,12 +1174,19 @@ public class RaidSession implements Listener {
     }
 
     private void broadcastToAlliance(TerritoryCore core, String message) {
-        List<UUID> members = plugin.getAllianceManager().getAllianceMembers(core.getAllyId());
+        Player owner = Bukkit.getPlayer(core.getOwnerUUID());
+        if (owner != null && owner.isOnline()) {
+            owner.sendMessage(message);
+        }
 
-        for (UUID memberUuid : members) {
-            Player player = Bukkit.getPlayer(memberUuid);
-            if (player != null && player.isOnline()) {
-                player.sendMessage(message);
+        if (plugin.getAllianceManager() != null) {
+            List<UUID> members = plugin.getAllianceManager().getAllianceMembers(core.getAllyId());
+            for (UUID memberUuid : members) {
+                if (memberUuid.equals(core.getOwnerUUID())) continue;
+                Player player = Bukkit.getPlayer(memberUuid);
+                if (player != null && player.isOnline()) {
+                    player.sendMessage(message);
+                }
             }
         }
     }

@@ -7,11 +7,13 @@ import com.truongcm.territorydefense.feature.core.TerritoryCore;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Sound;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -23,35 +25,37 @@ import java.util.UUID;
  */
 public class HealingTower extends Tower {
 
+    private static final String CFG = "tower-settings.types.healing";
+
     public HealingTower(UUID towerId, Location location, UUID ownerCoreId, int level) {
         super(towerId, location, ownerCoreId, TowerType.HEALING, level);
     }
 
     @Override
     public String getDisplayName() {
-        return ChatColor.LIGHT_PURPLE + "Tháp Hồi Phục (Evoker)";
+        return TerritoryDefense.getInstance().getConfig().getString(CFG + ".display-name", "&dTháp Hồi (Evoker)");
     }
 
     @Override
     public double getScanningRadius() {
-        return 14.0;
+        return TerritoryDefense.getInstance().getConfig().getDouble(CFG + ".scanning-radius", 14.0);
     }
 
     @Override
     public int getAttackSpeedTicks() {
-        return 80; // 4.0 giây
+        return TerritoryDefense.getInstance().getConfig().getInt(CFG + ".attack-speed-ticks", 80);
     }
 
     @Override
     public double getDamage() {
-        // Tịnh tiến năng lực trị thương: 15 -> 22 -> 33 -> 45 -> 60 HP hồi phục theo cấp độ
+        FileConfiguration cfg = TerritoryDefense.getInstance().getConfig();
+        List<Double> healingList = cfg.getDoubleList(CFG + ".healing-amount");
+        if (healingList != null && level >= 1 && level <= healingList.size()) {
+            return healingList.get(level - 1);
+        }
         return switch (level) {
-            case 1 -> 4.0;
-            case 2 -> 6.0;
-            case 3 -> 8.0;
-            case 4 -> 10.0;
-            case 5 -> 12.0;
-            default -> 4.0;
+            case 2 -> 26.0; case 3 -> 39.0; case 4 -> 54.0; case 5 -> 72.0;
+            default -> 18.0;
         };
     }
 
@@ -63,9 +67,9 @@ public class HealingTower extends Tower {
     public void performAttack(LivingEntity target, TerritoryCore core) {
         Location origin = getLocation().clone().add(0.5, 1.25, 0.5);
         double healAmount = getDamage();
+        double scanRadius = getScanningRadius();
 
-        // Quét tìm tất cả các thực thể đồng minh trong ranh giới 14 blocks
-        Collection<Entity> nearby = origin.getWorld().getNearbyEntities(origin, 14.0, 14.0, 14.0);
+        Collection<Entity> nearby = origin.getWorld().getNearbyEntities(origin, scanRadius, scanRadius, scanRadius);
         int healedCount = 0;
 
         for (Entity entity : nearby) {

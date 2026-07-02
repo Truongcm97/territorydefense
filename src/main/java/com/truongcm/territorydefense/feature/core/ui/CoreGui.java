@@ -93,8 +93,8 @@ public class CoreGui extends CustomHolder {
         inv.setItem(46, createTabButton(Material.IRON_SWORD, ChatColor.RED + "Phân khu Chiến Tranh", CoreTab.COMBAT));
         inv.setItem(47, createTabButton(Material.GOLD_INGOT, ChatColor.GOLD + "Phân khu Tài Chính", CoreTab.FINANCE));
 
-        // Nút Đóng GUI chung
-        inv.setItem(49, createGuiItem(Material.BARRIER, ChatColor.RED + "Đóng Giao Diện", "CLOSE"));
+        // Nút Đóng GUI chung (Slot 53)
+        inv.setItem(53, createGuiItem(Material.BARRIER, ChatColor.RED + "Đóng Giao Diện", "CLOSE"));
 
         switch (activeTab) {
             case LOGISTICS -> renderLogisticsTab(inv);
@@ -125,33 +125,22 @@ public class CoreGui extends CustomHolder {
                 ChatColor.GRAY + " Farmer sẽ tự động làm ruộng & chăn nuôi nạp FEP."
             ));
 
-        com.truongcm.territorydefense.feature.logistics.NPCBuilder activeBuilder = plugin.getBuilderManager().getActiveBuilders().get(core.getCoreId());
-        if (activeBuilder == null) {
-            double builderCostMoney = plugin.getConfig().getDouble("builder-settings.hire-cost-money", 150000.0);
-            int builderCostShards = plugin.getConfig().getInt("builder-settings.hire-cost-shards", 15);
-            inv.setItem(20, createGuiItem(Material.MUD_BRICKS, ChatColor.GOLD + "Thuê Thợ Xây NPC (Builder)", "HIRE_BUILDER",
-                    ChatColor.GRAY + "Chi phí thuê:",
-                    ChatColor.GRAY + " - Tiền xu: " + ChatColor.GOLD + builderCostMoney + " Xu",
-                    ChatColor.GRAY + " - Shards: " + ChatColor.AQUA + builderCostShards + " Shards",
-                    ChatColor.GRAY + " NPC sẽ tự động tái thiết các block bị hư hại sau Raid."
-                ));
-        } else {
-            int currentLevel = core.getBuilderLevel();
-            int currentSpeed = switch (currentLevel) {
-                case 1 -> 2;
-                case 2 -> 5;
-                case 3 -> 10;
-                case 4 -> 15;
-                case 5 -> 25;
-                default -> 2;
-            };
-            inv.setItem(20, createGuiItem(Material.MUD_BRICKS, ChatColor.GOLD + "Quản Lý & Nâng Cấp Thợ Xây (Cấp " + currentLevel + ")", "OPEN_BUILDER_UPGRADE",
-                    ChatColor.GRAY + "Trạng thái: " + (activeBuilder.isRebuilding() ? ChatColor.GREEN + "Đang xây dựng" : ChatColor.YELLOW + "Rảnh rỗi"),
-                    ChatColor.GRAY + "Tốc độ xây dựng: " + ChatColor.AQUA + currentSpeed + " block/giây",
-                    " ",
-                    ChatColor.YELLOW + "➔ Nhấp để mở bảng Nâng cấp & Sa thải Thợ xây."
-                ));
-        }
+        com.truongcm.territorydefense.feature.logistics.NPCBuilder activeBuilder = plugin.getBuilderManager().getOrCreateBuilder(core.getCoreId());
+        int currentLevel = core.getBuilderLevel();
+        int currentSpeed = switch (currentLevel) {
+            case 1 -> 2;
+            case 2 -> 5;
+            case 3 -> 10;
+            case 4 -> 15;
+            case 5 -> 25;
+            default -> 2;
+        };
+        inv.setItem(20, createGuiItem(Material.MUD_BRICKS, ChatColor.GOLD + "Quản Lý & Nâng Cấp Thợ Xây (Cấp " + currentLevel + ")", "OPEN_BUILDER_UPGRADE",
+                ChatColor.GRAY + "Trạng thái: " + (activeBuilder.isRebuilding() ? ChatColor.GREEN + "Đang xây dựng" : ChatColor.YELLOW + "Rảnh rỗi"),
+                ChatColor.GRAY + "Tốc độ xây dựng: " + ChatColor.AQUA + currentSpeed + " block/giây",
+                " ",
+                ChatColor.YELLOW + "➔ Nhấp để mở bảng Nâng cấp & Dừng sửa chữa Thợ xây."
+            ));
 
         ItemStack depositHelper = createGuiItem(Material.CHEST, ChatColor.AQUA + "" + ChatColor.BOLD + "Kho Thực Phẩm Lõi (54 Ô)", "OPEN_FOOD_WAREHOUSE",
                 ChatColor.GRAY + "Bấm vào để mở kho thực phẩm trung chuyển.",
@@ -173,14 +162,15 @@ public class CoreGui extends CustomHolder {
         ));
 
         // Nút tính năng Blueprint
-        inv.setItem(38, createGuiItem(Material.PAPER, ChatColor.BLUE + "" + ChatColor.BOLD + "Quản Lý 9 Bản Vẽ Thiết Kế", "OPEN_BLUEPRINTS",
+        inv.setItem(38, createGuiItem(Material.PAPER, ChatColor.BLUE + "" + ChatColor.BOLD + "Quản Lý Bản Vẽ Thiết Kế", "OPEN_BLUEPRINTS",
                 ChatColor.GRAY + "Mở giao diện lưu trữ, chọn xây dựng hoặc",
-                ChatColor.GRAY + "xóa tối đa 9 bản thiết kế công trình."
+                ChatColor.GRAY + "xóa tối đa 54 bản thiết kế công trình."
         ));
 
-        inv.setItem(40, createGuiItem(Material.ANVIL, ChatColor.LIGHT_PURPLE + "" + ChatColor.BOLD + "Tái Thiết Theo Ảnh Trước Raid", "TRIGGER_PRE_RAID_REBUILD",
-                ChatColor.GRAY + "Yêu cầu NPC Mason khôi phục các khối block",
-                ChatColor.GRAY + "bị phá huỷ dựa trên ảnh chụp trước trận Raid gần nhất."
+        inv.setItem(40, createGuiItem(Material.ANVIL, ChatColor.LIGHT_PURPLE + "" + ChatColor.BOLD + "Tái Thiết Lãnh Thổ", "TRIGGER_PRE_RAID_REBUILD",
+                ChatColor.GRAY + "Mở menu lựa chọn bản vẽ để khôi phục",
+                ChatColor.GRAY + "các khối block bị tàn phá (từ ảnh chụp trước Raid",
+                ChatColor.GRAY + "hoặc các bản vẽ lưu trữ của riêng bạn)."
         ));
 
         boolean isShared = core.isPublicBlueprintShared();
@@ -322,8 +312,8 @@ public class CoreGui extends CustomHolder {
                     ChatColor.GRAY + "Toàn bộ ranh giới, tháp và FEP đã kịch trần."
             );
         } else {
-            double moneyCost = plugin.getConfig().getDouble("core-upgrades.money-cost-level-" + nextLevel, 500000.0);
-            int shardCost = plugin.getConfig().getInt("core-upgrades.shard-cost-level-" + nextLevel, 15);
+            double moneyCost = plugin.getConfig().getDouble("core-settings.levels." + nextLevel + ".upgrade-cost-money", 500000.0);
+            int shardCost = plugin.getConfig().getInt("core-settings.levels." + nextLevel + ".upgrade-cost-shards", 15);
 
             upgradeButton = createGuiItem(Material.ANVIL, ChatColor.GREEN + "Nâng Cấp Tiến Trình Lõi", "UPGRADE_CORE",
                     ChatColor.GRAY + "Nâng lên cấp độ: " + ChatColor.YELLOW + nextLevel,
@@ -403,18 +393,9 @@ public class CoreGui extends CustomHolder {
             }
 
             if (action.equalsIgnoreCase("OPEN_BUILDER_UPGRADE")) {
-                com.truongcm.territorydefense.feature.logistics.NPCBuilder builder = plugin.getBuilderManager().getActiveBuilders().get(core.getCoreId());
-                if (builder != null) {
-                    player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.BuilderUpgradeGui(plugin, builder, core).getInventory());
-                    player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
-                }
-                return;
-            }
-
-            if (action.equalsIgnoreCase("HIRE_BUILDER")) {
-                if (plugin.getBuilderManager().hireNewBuilder(player, core)) {
-                    player.closeInventory();
-                }
+                com.truongcm.territorydefense.feature.logistics.NPCBuilder builder = plugin.getBuilderManager().getOrCreateBuilder(core.getCoreId());
+                player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.BuilderUpgradeGui(plugin, builder, core).getInventory());
+                player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
                 return;
             }
 
@@ -437,12 +418,9 @@ public class CoreGui extends CustomHolder {
                     player.sendMessage(ChatColor.RED + "Bạn cần thuê Thợ Xây NPC trước!");
                     return;
                 }
-                if (builder.getLastPreRaidSnapshot().isEmpty()) {
-                    player.sendMessage(ChatColor.RED + "Không có ảnh chụp Lãnh thổ trước trận Raid nào được lưu hoặc trận đấu chưa diễn ra!");
-                    return;
-                }
-                builder.startRebuild(core, builder.getLastPreRaidSnapshot(), player);
                 player.closeInventory();
+                player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.RebuildSelectGui(plugin, core).getInventory());
+                player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
                 return;
             }
 
@@ -605,11 +583,14 @@ public class CoreGui extends CustomHolder {
             return;
         }
 
+        // Cho phép player call raid chủ động bỏ qua Khiên Hòa Bình
+        /*
         if (plugin.getCoreManager().isUnderPeaceProtection(core.getCoreId())) {
             player.sendMessage(ChatColor.RED + "[Raid] Lãnh thổ của bạn đang được đặt Khiên Hòa Bình, không thể kích hoạt Raid!");
             player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
             return;
         }
+        */
 
         boolean activated = false;
         if (plugin.getRaidSession() != null) {
@@ -662,23 +643,7 @@ public class CoreGui extends CustomHolder {
         }
 
         if (plugin.getRaidSession() != null) {
-            try {
-                java.lang.reflect.Method endMethod = plugin.getRaidSession().getClass()
-                        .getMethod("stopActiveRaid", TerritoryCore.class);
-                endMethod.invoke(plugin.getRaidSession(), core);
-            } catch (Exception e1) {
-                try {
-                    java.lang.reflect.Method endMethod = plugin.getRaidSession().getClass()
-                            .getMethod("stopRaid", TerritoryCore.class);
-                    endMethod.invoke(plugin.getRaidSession(), core);
-                } catch (Exception e2) {
-                    try {
-                        java.lang.reflect.Method endMethod = plugin.getRaidSession().getClass()
-                                .getMethod("endRaid", UUID.class);
-                        endMethod.invoke(plugin.getRaidSession(), core.getCoreId());
-                    } catch (Exception ignored) {}
-                }
-            }
+            plugin.getRaidSession().endRaid(core, false);
         }
 
         long peaceDuration = 2 * 60 * 60 * 1000L;
@@ -707,6 +672,19 @@ public class CoreGui extends CustomHolder {
             case "support" -> plugin.getConfig().getDouble("mercenary-settings.types.support.hire-cost", 60000.0);
             default -> 50000.0;
         };
+
+        // Kiểm tra giới hạn số lượng lính đánh thuê theo cấu hình OTR / Merge
+        int currentCount = plugin.getMercenaryAI() != null ? plugin.getMercenaryAI().getActiveMercenariesCount(core) : 0;
+        int limit = plugin.getConfig().getInt("mercenary-settings.limits-per-core." + core.getLevel(), 0);
+        if (core.isMerged()) {
+            limit = plugin.getConfig().getInt("mercenary-settings.hard-cap-after-merge", 15);
+        }
+
+        if (currentCount >= limit) {
+            player.sendMessage(ChatColor.RED + "Lãnh thổ đã đạt tới giới hạn Lính Đánh Thuê tối đa (" + currentCount + "/" + limit + " lính)!");
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            return;
+        }
 
         if (!plugin.getVaultEconomy().has(player, cost)) {
             player.sendMessage(ChatColor.RED + "Bạn không đủ Xu để thuê lính " + type + "! Cần: " + String.format("%,.0f", cost) + " Xu.");
@@ -927,6 +905,12 @@ public class CoreGui extends CustomHolder {
     }
 
     private void handleRetrieveCore(Player player) {
+        if (isRaidActive(core)) {
+            player.sendMessage(ChatColor.RED + "Không thể thu hồi Lõi khi đang có đợt Raid tấn công!");
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            return;
+        }
+
         if (player.getInventory().firstEmpty() == -1) {
             player.sendMessage(ChatColor.RED + "Hòm đồ của bạn đã đầy! Vui lòng dọn trống ít nhất 1 ô để thu hồi Lõi.");
             player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);

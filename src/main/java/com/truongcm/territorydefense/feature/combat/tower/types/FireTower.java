@@ -6,11 +6,13 @@ import com.truongcm.territorydefense.feature.core.TerritoryCore;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Sound;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.SmallFireball;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.util.Vector;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -21,35 +23,37 @@ import java.util.UUID;
  */
 public class FireTower extends Tower {
 
+    private static final String CFG = "tower-settings.types.fire";
+
     public FireTower(UUID towerId, Location location, UUID ownerCoreId, int level) {
         super(towerId, location, ownerCoreId, TowerType.FIRE, level);
     }
 
     @Override
     public String getDisplayName() {
-        return ChatColor.RED + "Tháp Lửa (Blaze)";
+        return TerritoryDefense.getInstance().getConfig().getString(CFG + ".display-name", "&cTháp Lửa (Blaze)");
     }
 
     @Override
     public double getScanningRadius() {
-        return 15.0;
+        return TerritoryDefense.getInstance().getConfig().getDouble(CFG + ".scanning-radius", 15.0);
     }
 
     @Override
     public int getAttackSpeedTicks() {
-        return 30; // 1.5 giây
+        return TerritoryDefense.getInstance().getConfig().getInt(CFG + ".attack-speed-ticks", 30);
     }
 
     @Override
     public double getDamage() {
-        // Tịnh tiến sát thương: 20.0 -> 30.0 -> 44.0 -> 60.0 -> 80.0 DMG theo cấp độ
+        FileConfiguration cfg = TerritoryDefense.getInstance().getConfig();
+        List<Double> damageList = cfg.getDoubleList(CFG + ".damage");
+        if (damageList != null && level >= 1 && level <= damageList.size()) {
+            return damageList.get(level - 1);
+        }
         return switch (level) {
-            case 1 -> 4.0;
-            case 2 -> 6.0;
-            case 3 -> 8.0;
-            case 4 -> 10.0;
-            case 5 -> 12.0;
-            default -> 4.0;
+            case 2 -> 36.0; case 3 -> 52.0; case 4 -> 72.0; case 5 -> 96.0;
+            default -> 24.0;
         };
     }
 
@@ -69,17 +73,17 @@ public class FireTower extends Tower {
         fireball.setIsIncendiary(false); // Chống bắt lửa phá hủy địa hình khối block
         fireball.setMetadata("td_tower_projectile", new FixedMetadataValue(TerritoryDefense.getInstance(), true));
 
+        int fireTicks = TerritoryDefense.getInstance().getConfig().getInt(CFG + ".special.fire-ticks", 80);
+
         // Gây sát thương và thiêu đốt
         if (core != null && core.getOwnerUUID() != null) {
             target.setMetadata("td_last_tower_damager_uuid", new FixedMetadataValue(TerritoryDefense.getInstance(), core.getOwnerUUID().toString()));
         }
         target.damage(finalDamage);
-        target.setFireTicks(80); // Đốt cháy trong 4 giây (20 ticks = 1s)
+        target.setFireTicks(fireTicks);
         target.setMetadata("td_last_damaged_by_tower", new FixedMetadataValue(TerritoryDefense.getInstance(), true));
 
-        // Đánh dấu cờ bộc nổ khi chết để lắng nghe trong CombatDamageTracker
         target.setMetadata("td_explode_on_death", new FixedMetadataValue(TerritoryDefense.getInstance(), level));
-
         origin.getWorld().playSound(origin, Sound.ENTITY_BLAZE_SHOOT, 0.8f, 1.2f);
     }
 }

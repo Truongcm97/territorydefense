@@ -218,6 +218,8 @@ public class TerritoryCore {
     public void setShield(double shield) {
         // Khống chế giáp ảo không vượt quá mức tối đa
         this.shield = Math.max(0.0, Math.min(shield, getMaxShieldCapacity()));
+        // Đồng bộ hiển thị hologram
+        com.truongcm.territorydefense.feature.core.HologramManager.updateCoreHologram(this);
     }
 
     public String getAllyId() {
@@ -240,6 +242,8 @@ public class TerritoryCore {
 
     public void setTempHealth(double tempHealth) {
         this.tempHealth = tempHealth;
+        // Đồng bộ hiển thị hologram
+        com.truongcm.territorydefense.feature.core.HologramManager.updateCoreHologram(this);
     }
 
     public boolean isRaidActive() {
@@ -248,6 +252,8 @@ public class TerritoryCore {
 
     public void setRaidActive(boolean raidActive) {
         isRaidActive = raidActive;
+        // Đồng bộ hiển thị hologram
+        com.truongcm.territorydefense.feature.core.HologramManager.updateCoreHologram(this);
     }
 
     /**
@@ -257,7 +263,10 @@ public class TerritoryCore {
     public void revertHealth() {
         this.tempHealth = getMaxShieldCapacity();
         this.isRaidActive = false;
+        // Đồng bộ hiển thị hologram
+        com.truongcm.territorydefense.feature.core.HologramManager.updateCoreHologram(this);
     }
+
 
     public double getPermanentRaidMultiplier() {
         return permanentRaidMultiplier;

@@ -55,6 +55,8 @@ public class BlueprintDeleteConfirmGui extends CustomHolder {
                 ChatColor.YELLOW + "➔ Click để quay lại giao diện quản lý."
         ));
 
+        inv.setItem(26, createGuiItem(Material.BARRIER, ChatColor.RED + "Thoát Giao Diện", "CLOSE"));
+
         return inv;
     }
 
@@ -66,6 +68,11 @@ public class BlueprintDeleteConfirmGui extends CustomHolder {
         if (clicked.hasItemMeta()) {
             String action = clicked.getItemMeta().getPersistentDataContainer().get(actionKey, PersistentDataType.STRING);
             if (action == null) return;
+
+            if (action.equalsIgnoreCase("CLOSE")) {
+                player.closeInventory();
+                return;
+            }
 
             if (action.equalsIgnoreCase("CONFIRM")) {
                 player.closeInventory();

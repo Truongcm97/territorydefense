@@ -195,6 +195,15 @@ public class TerritoryCommands implements CommandExecutor {
                     }
                 }
             }
+            case "save" -> {
+                if (!player.hasPermission("territorydefense.admin")) {
+                    player.sendMessage(ChatColor.RED + "Bạn không có quyền sử dụng lệnh này!");
+                    return true;
+                }
+                player.sendMessage(ChatColor.YELLOW + "[Hệ thống] Đang thực hiện lưu lại toàn bộ dữ liệu...");
+                plugin.saveAllData();
+                player.sendMessage(ChatColor.GREEN + "[Hệ thống] Đã hoàn thành lưu trữ toàn bộ dữ liệu thành công!");
+            }
             case "help" -> showHelp(player);
             default -> player.sendMessage(ChatColor.RED + "Lệnh không hợp lệ! Gõ /territory help để xem trợ giúp.");
         }
@@ -436,6 +445,7 @@ public class TerritoryCommands implements CommandExecutor {
             player.sendMessage(ChatColor.RED + "/territory resetdifficulty <tên> : " + ChatColor.WHITE + "Reset độ khó thăng tiến của quái (Admin).");
             player.sendMessage(ChatColor.RED + "/territory recall <tên> : " + ChatColor.WHITE + "Cưỡng chế thu hồi Lõi của người chơi khác (Admin).");
             player.sendMessage(ChatColor.RED + "/territory getcore : " + ChatColor.WHITE + "Lấy dữ liệu Lõi đang đứng gần (Admin).");
+            player.sendMessage(ChatColor.RED + "/territory save : " + ChatColor.WHITE + "Lưu trữ thủ công toàn bộ dữ liệu hệ thống (Admin).");
             player.sendMessage(ChatColor.RED + "/territory rebuildholograms : " + ChatColor.WHITE + "Dọn dẹp và tái tạo toàn bộ Hologram server (Admin).");
         }
         player.sendMessage(ChatColor.GOLD + "========================================================");

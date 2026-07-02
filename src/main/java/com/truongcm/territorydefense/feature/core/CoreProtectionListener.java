@@ -49,6 +49,7 @@ import java.util.UUID;
 public class CoreProtectionListener implements Listener {
 
     private final TerritoryDefense plugin;
+    private final java.util.Map<UUID, Long> lastAttackAlertTime = new java.util.HashMap<>();
 
     public CoreProtectionListener(TerritoryDefense plugin) {
         this.plugin = plugin;
@@ -245,12 +246,18 @@ public class CoreProtectionListener implements Listener {
             block.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, block.getLocation().add(0.5, 0.5, 0.5), 20, 0.3, 0.3, 0.3, 0.1);
             block.getWorld().playSound(block.getLocation(), Sound.ITEM_SHIELD_BLOCK, 1.0f, 1.2f);
 
-            player.sendMessage(ChatColor.GREEN + "[Chiến sự] Bạn đã gây " + String.format("%.1f", finalDmg) + " sát thương lên Khiên ảo đối phương! Còn lại: " + String.format("%.0f", newShield) + " Shield HP.");
+            player.sendActionBar(ChatColor.GREEN + "[Chiến sự] Bạn đã gây " + String.format("%.1f", finalDmg) + " sát thương lên Khiên ảo đối phương! Còn lại: " + String.format("%.0f", newShield) + " Shield HP.");
 
             Player owner = Bukkit.getPlayer(core.getOwnerUUID());
             if (owner != null && owner.isOnline()) {
-                owner.sendMessage(ChatColor.RED + "[Cảnh báo] Lõi lãnh thổ của bạn đang bị " + player.getName() + " công phá! Khiên ảo còn lại: " + String.format("%.0f", newShield) + " HP.");
-                owner.playSound(owner.getLocation(), Sound.BLOCK_ANVIL_LAND, 0.5f, 1.0f);
+                long now = System.currentTimeMillis();
+                long lastAlert = lastAttackAlertTime.getOrDefault(owner.getUniqueId(), 0L);
+                owner.sendActionBar(ChatColor.RED + "[Cảnh báo] Lõi lãnh thổ đang bị tấn công! Khiên ảo còn lại: " + String.format("%.0f", newShield) + " HP.");
+                if (now - lastAlert >= 5000L) {
+                    lastAttackAlertTime.put(owner.getUniqueId(), now);
+                    owner.sendMessage(ChatColor.RED + "[Cảnh báo] Lõi lãnh thổ của bạn đang bị " + player.getName() + " công phá! Khiên ảo còn lại: " + String.format("%.0f", newShield) + " HP.");
+                    owner.playSound(owner.getLocation(), Sound.BLOCK_ANVIL_LAND, 0.5f, 1.0f);
+                }
             }
 
             if (newShield <= 0.0) {
@@ -609,6 +616,26 @@ public class CoreProtectionListener implements Listener {
         if (owner != null && owner.isOnline()) {
             String victimName = victim instanceof Player ? victim.getName() : (victim.getCustomName() != null ? victim.getCustomName() : victim.getName());
             owner.sendMessage(ChatColor.YELLOW + "[Khiên Lãnh Thổ] Khiên hấp thụ " + String.format("%.1f", dmg) + " sát thương bảo hộ cho " + victimName + "! Khiên còn lại: " + String.format("%.0f", newShield) + "/" + core.getMaxShieldCapacity() + " HP.");
+        }
+    }
+
+    /**
+     * BẢO VỆ NPC BUILDER (MASON): BẤT TỬ HOÀN TOÀN TRƯỚC MỌI NGUỒN SÁT THƯƠNG
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onBuilderDamage(EntityDamageEvent event) {
+        if (event.getEntity().hasMetadata("td_builder")) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * NGĂN CHẶN QUÁI VẬT NHẮM MỤC TIÊU VÀO NPC BUILDER
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onBuilderTarget(org.bukkit.event.entity.EntityTargetEvent event) {
+        if (event.getTarget() != null && event.getTarget().hasMetadata("td_builder")) {
+            event.setCancelled(true);
         }
     }
 

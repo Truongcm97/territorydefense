@@ -7,22 +7,23 @@ import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.Particle;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.util.Vector;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 /**
  * THÁP SÉT PHÒNG THỦ (LIGHTNING TOWER) - THEO MASTER GDD FINAL V30
- * Đại diện: Charged Creeper (Sử dụng khối CREEPER_HEAD / CREEPER_WALL_HEAD).
- * Đặc tính: Tầm bắn ngắn (3.0 blocks), tốc độ giật sét siêu nhanh (10 ticks = 0.5 giây / phát).
- * Kỹ năng độc quyền: Giật sét chuỗi lan tỏa (Chain Lightning) tối đa 5 mục tiêu gần kề.
- * NÂNG CẤP V30: Tích hợp thuật toán vẽ dòng điện hạt 3D (Lightning Beam) kết nối các mục tiêu cực kỳ rực rỡ.
+ * Tất cả thông số đọc từ config.yml → tower-settings.types.lightning
  */
 public class LightningTower extends Tower {
+
+    private static final String CFG = "tower-settings.types.lightning";
 
     public LightningTower(UUID towerId, Location location, UUID ownerCoreId, int level) {
         super(towerId, location, ownerCoreId, TowerType.LIGHTNING, level);
@@ -30,44 +31,48 @@ public class LightningTower extends Tower {
 
     @Override
     public String getDisplayName() {
-        return ChatColor.AQUA + "Tháp Điện (Creeper)";
+        return TerritoryDefense.getInstance().getConfig().getString(CFG + ".display-name", "&bTháp Điện (Creeper)");
     }
 
     @Override
     public double getScanningRadius() {
-        return 3.0; // Tầm quét cực cận theo GDD
+        return TerritoryDefense.getInstance().getConfig().getDouble(CFG + ".scanning-radius", 8.0);
     }
 
     @Override
     public int getAttackSpeedTicks() {
-        return 30; // Giãn cách bắn 1.5 giây (30 ticks)
+        return TerritoryDefense.getInstance().getConfig().getInt(CFG + ".attack-speed-ticks", 15);
     }
 
     @Override
     public double getFepCost() {
-        return 6.0; // Tiêu hao 6.0 FEP cho tháp Điện
+        return TerritoryDefense.getInstance().getConfig().getDouble(CFG + ".fep-cost", 6.0);
     }
 
     @Override
     public double getDamage() {
-        // Tịnh tiến sát thương: 8.0 -> 12.0 -> 17.0 -> 24.0 -> 32.0 DMG theo cấp độ
+        FileConfiguration cfg = TerritoryDefense.getInstance().getConfig();
+        List<Double> damageList = cfg.getDoubleList(CFG + ".damage");
+        if (damageList != null && level >= 1 && level <= damageList.size()) {
+            return damageList.get(level - 1);
+        }
         return switch (level) {
-            case 1 -> 8.0;
-            case 2 -> 11.0;
-            case 3 -> 15.0;
-            case 4 -> 19.0;
-            case 5 -> 24.0;
-            default -> 8.0;
+            case 2 -> 15.0; case 3 -> 21.0; case 4 -> 29.0; case 5 -> 38.0;
+            default -> 10.0;
         };
     }
 
     /**
      * Khai hỏa: Gọi sấm sét từ hư không đánh thẳng xuống mục tiêu chính,
-     * đồng thời vẽ tia điện 3D lan truyền dòng năng lượng sang tối đa 5 mục tiêu lân cận.
+     * đồng thời vẽ tia điện 3D lan truyền dòng năng lượng sang N mục tiêu lân cận.
      */
     @Override
     public void performAttack(LivingEntity target, TerritoryCore core) {
-        // Tâm bắn xuất phát từ đỉnh đầu quái Creeper Head (cao hơn móng block 0.25 để thẩm mỹ)
+        FileConfiguration cfg = TerritoryDefense.getInstance().getConfig();
+        int chainTargets = cfg.getInt(CFG + ".special.chain-targets", 5);
+        double chainRange = cfg.getDouble(CFG + ".special.chain-range", 6.0);
+        double chainDamageRatio = cfg.getDouble(CFG + ".special.chain-damage-ratio", 0.70);
+
         Location origin = getLocation().clone().add(0.5, 1.25, 0.5);
         double finalDamage = getFinalDamage(target);
 
@@ -75,15 +80,13 @@ public class LightningTower extends Tower {
         drawLightningBeam(origin, target.getLocation().add(0, 1.0, 0));
         executeLightningStrike(target, finalDamage);
 
-        // 2. Thuật toán lan truyền dòng điện (Chain-Targets) tối đa 5 mục tiêu lân cận trong tầm 6.0 block
+        // 2. Thuật toán lan truyền dòng điện (Chain-Targets)
         int chainCount = 0;
-        double chainRange = 6.0;
         Collection<Entity> nearby = target.getNearbyEntities(chainRange, chainRange, chainRange);
-
         Location lastChainLoc = target.getLocation().add(0, 1.0, 0);
 
         for (Entity entity : nearby) {
-            if (chainCount >= 5) break; // Giới hạn lan truyền 5 mục tiêu theo đúng thiết kế GDD
+            if (chainCount >= chainTargets) break;
             if (!(entity instanceof LivingEntity living) || living.equals(target)) continue;
 
             boolean isRaidMob = living.hasMetadata("td_raid_mob") || (com.truongcm.territorydefense.feature.core.PDCKeys.RAID_MOB_TAG != null && living.getPersistentDataContainer().has(com.truongcm.territorydefense.feature.core.PDCKeys.RAID_MOB_TAG, org.bukkit.persistence.PersistentDataType.BYTE));
@@ -91,10 +94,8 @@ public class LightningTower extends Tower {
                     || (isRaidMob && !living.isDead() && living.isValid())) {
 
                 Location nextChainLoc = living.getLocation().add(0, 1.0, 0);
-
-                // Vẽ dòng điện nối từ mắt xích trước sang mắt xích sau
                 drawLightningBeam(lastChainLoc, nextChainLoc);
-                executeLightningStrike(living, finalDamage * 0.7); // Quái lan nhận 70% sát thương theo cân bằng GDD
+                executeLightningStrike(living, finalDamage * chainDamageRatio);
 
                 lastChainLoc = nextChainLoc;
                 chainCount++;

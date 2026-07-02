@@ -547,7 +547,9 @@ public class PostWarManager {
         // Thực hiện phá block Lõi để hệ thống giải phóng mốc tọa độ
         if (triggerPlayer != null) {
             org.bukkit.event.block.BlockBreakEvent breakEvent = new org.bukkit.event.block.BlockBreakEvent(coreLoc.getBlock(), triggerPlayer);
-            plugin.getCoreManager().onCoreBreak(breakEvent);
+            if (plugin.getCoreGameplayListener() != null) {
+                plugin.getCoreGameplayListener().onCoreBreak(breakEvent);
+            }
         } else {
             coreLoc.getBlock().setType(org.bukkit.Material.AIR);
         }

@@ -135,6 +135,12 @@ farmer-settings:
 # ------------------------------------------------------------------------------
 tower-settings:
   fep-cost-per-shot: 2.0
+  # FEP tiêu hao mặc định cho các tháp không khai báo riêng
+  fep-cost-default: 5.0
+  # Boost sát thương khi lõi được merge (+5% mỗi lõi hợp nhất)
+  merge-damage-boost-per-core: 0.05
+  # Giảm sát thương khi tháp bắn vào người chơi (PvP balance: 10%)
+  player-damage-reduction: 0.10
 
   upgrade-costs:
     level-2: { money: 20000.0, shards: 0 }
@@ -146,30 +152,35 @@ tower-settings:
   types:
     lightning:
       display-name: "&bTháp Điện (Creeper)"
-      scanning-radius: 8.0     # Tăng từ 3.0 lên 8.0 để tháp không bị phế
-      attack-speed-ticks: 15   # Giảm nhẹ tốc độ bắn (0.75s) để giảm tải tính toán chuỗi giật điện
+      scanning-radius: 8.0
+      attack-speed-ticks: 15
+      fep-cost: 6.0
       damage: [10.0, 15.0, 21.0, 29.0, 38.0]
       special:
         chain-targets: 5
+        chain-range: 6.0          # Bán kính lan truyền sét chuỗi (block)
+        chain-damage-ratio: 0.70  # Quái lan nhận 70% sát thương
     arrow:
       display-name: "&eTháp Cung (Skeleton)"
       scanning-radius: 16.0
-      attack-speed-ticks: 20 # 1.0s
+      attack-speed-ticks: 20
       damage: [18.0, 26.0, 39.0, 54.0, 72.0]
       special:
-        max-shard-multiplier: 5
         pierce-targets: 3
+        arrow-speed: 2.5          # Hệ số vận tốc mũi tên
+        pierce-hitbox: 1.4        # Bán kính quét ray-pierce (block)
     fire:
       display-name: "&cTháp Lửa (Blaze)"
       scanning-radius: 15.0
-      attack-speed-ticks: 30 # 1.5s
+      attack-speed-ticks: 30
       damage: [24.0, 36.0, 52.0, 72.0, 96.0]
       special:
         explode-on-death: true
+        fire-ticks: 80            # Số tick thiêu đốt mục tiêu (80 = 4 giây)
     frost:
       display-name: "&9Tháp Băng (Stray)"
       scanning-radius: 12.0
-      attack-speed-ticks: 40 # 2.0s
+      attack-speed-ticks: 40
       damage: [12.0, 18.0, 26.0, 36.0, 48.0]
       special:
         slow-amplifier: 1
@@ -177,7 +188,7 @@ tower-settings:
     artillery:
       display-name: "&7Tháp Pháo (Ghast)"
       scanning-radius: 20.0
-      attack-speed-ticks: 60 # 3.0s
+      attack-speed-ticks: 60
       damage: [48.0, 72.0, 105.0, 144.0, 192.0]
       special:
         stun-duration-ticks: 30
@@ -185,15 +196,14 @@ tower-settings:
     healing:
       display-name: "&dTháp Hồi (Evoker)"
       scanning-radius: 14.0
-      attack-speed-ticks: 80 # 4.0s
+      attack-speed-ticks: 80
       healing-amount: [18.0, 26.0, 39.0, 54.0, 72.0]
       special:
         reflect-damage-percent: 10
     spell:
       display-name: "&5Tháp Phép (Witch)"
-      scanning-radius: 12.0   # Bổ sung thông số quét mục tiêu bị thiếu
-      attack-speed-ticks: 100 # 5.0s
-      damage: [0.0, 0.0, 0.0, 0.0, 0.0] # Bổ sung mảng gốc tránh lỗi null-pointer ở một số plugin
+      scanning-radius: 12.0
+      attack-speed-ticks: 100
       damage-buff-percent: [5, 8, 12, 15, 20]
 
 # ------------------------------------------------------------------------------
@@ -250,13 +260,15 @@ mercenary-settings:
 # ------------------------------------------------------------------------------
 raid-settings:
   auto-cycle-hours: 2.0
-  delay-between-waves-seconds: 45
+  delay-between-waves-seconds: 10
   # Hạ xuống 15% để khuyến khích teamwork (30% quá cao nếu đi đông người)
   min-damage-contribution-percent: 15.0
   max-shard-multiplier: 5
 
   # Cơ chế tăng thưởng theo số lượt raid đã hoàn thành của Lõi (completedRaids)
   reward-scaling:
+    # Hệ số nhân thưởng tiền xu cơ bản từ quái vật Raid (ví dụ: 2.0 = nhân đôi 100% tiền xu nhận được)
+    coin-reward-multiplier: 2.0
     # Tỉ lệ tăng tiền thưởng xu thêm mỗi lượt hoàn thành (ví dụ 0.02 = +2% mỗi lượt, chỉ áp dụng khi scale-coins-with-difficulty-multiplier là false)
     coin-increase-per-raid: 0.02
     # Nhân trực tiếp tiền thưởng xu với hệ số sức mạnh quái (getPermanentRaidMultiplier()) giúp tương thích hoàn hảo độ khó quái
@@ -316,6 +328,57 @@ raid-settings:
     2: 500000.0
     3: 1000000.0
 
+  # --- Cơ chế thời gian Wave ---
+  # Số tick chờ giữa 2 wave liên tiếp (900 ticks = 45 giây)
+  wave-delay-ticks: 900
+  # Giới hạn thời gian tối đa mỗi wave (phút) — quá giờ tính là thua
+  wave-duration-limit-minutes: 10
+
+  # --- Cơ chế Spawn Quái ---
+  # Tần suất spawn mỗi đợt (ticks): 40 ticks = 2 giây
+  spawn-interval-ticks: 40
+  # Số con tối thiểu/tối đa mỗi đợt spawn dãn cách
+  spawn-batch-min: 3
+  spawn-batch-max: 5
+  # Công thức tổng quái trong wave: base * level ^ power
+  wave-mob-formula-base: 25
+  wave-mob-formula-power: 1.75
+
+  # --- Cơ chế Độ Khó Tịnh Tiến ---
+  # Hệ số tăng sức mạnh quái mỗi lần "Gọi Raid" bổ sung (+20%/lần)
+  call-scaling-factor: 1.20
+  # Hệ số tăng sức mạnh quái theo tổng số trận đã diễn ra (+5%/trận)
+  total-raid-scaling-factor: 1.05
+
+  # --- Hành Vi AI Quái Công Thành ---
+  # Số tick giữa 2 lần quái tấn công Lõi trực tiếp (20 ticks = 1 giây)
+  mob-ai-attack-interval-ticks: 20
+  # Số tick tích lũy để quái phá được 1 block cản đường
+  block-break-ticks-threshold: 3
+  # Khoảng cách (block) tối thiểu quái phải vào để tấn công Lõi
+  core-attack-range: 4.0
+  # Khoảng cách coi là quái đứng im (block/giây)
+  stuck-distance-threshold: 0.2
+  # Số giây liên tiếp đứng im trước khi kích hoạt xử lý kẹt
+  stuck-seconds-threshold: 2
+
+  # --- HP Cơ Bản Quái (Base HP theo GDD) ---
+  mob-base-hp:
+    VINDICATOR: 150.0
+    GHAST: 100.0
+    RAVAGER: 1500.0
+    EVOKER: 200.0
+    SKELETON: 120.0
+    PHANTOM: 150.0
+    GIANT: 10000.0
+    DEFAULT: 100.0
+
+  # --- Sát Thương Quái Vào Lõi ---
+  mob-core-damage:
+    DEFAULT: 50.0
+    GIANT: 300.0
+    RAVAGER: 150.0
+
 # ------------------------------------------------------------------------------
 # 7. CHIẾN TRANH LIÊN MINH (PVP SIEGE MODE)
 # ------------------------------------------------------------------------------
@@ -363,8 +426,22 @@ builder-settings:
   # Chi phí thuê NPC Kiến Thiết (Mason)
   hire-cost-money: 150000.0
   hire-cost-shards: 15
-  # Tốc độ tái thiết (số block mỗi giây)
+  # Tốc độ tái thiết mặc định nếu không tìm thấy cấp độ cụ thể (số block mỗi giây)
   rebuild-blocks-per-second: 5
-  # Giới hạn chiều cao quét (so với cao độ của Lõi)
+  # Giới hạn chiều cao quét bản vẽ thiết kế (so với cao độ của Lõi)
   scan-height-below: 5
   scan-height-above: 15
+  # Tốc độ tái thiết chi tiết theo từng cấp độ của Thợ Xây (số block mỗi giây)
+  levels:
+    1: 2
+    2: 5
+    3: 10
+    4: 15
+    5: 25
+
+# ------------------------------------------------------------------------------
+# 8. CẤU HÌNH HIỆU ỨNG HẠT (PARTICLES)
+# ------------------------------------------------------------------------------
+particle-settings:
+  tower-happy: "HAPPY_VILLAGER"
+  farmer-happy: "HAPPY_VILLAGER"

@@ -6,6 +6,7 @@ import com.truongcm.territorydefense.feature.core.TerritoryCore;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Sound;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.metadata.FixedMetadataValue;
@@ -13,6 +14,7 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -23,35 +25,37 @@ import java.util.UUID;
  */
 public class ArtilleryTower extends Tower {
 
+    private static final String CFG = "tower-settings.types.artillery";
+
     public ArtilleryTower(UUID towerId, Location location, UUID ownerCoreId, int level) {
         super(towerId, location, ownerCoreId, TowerType.ARTILLERY, level);
     }
 
     @Override
     public String getDisplayName() {
-        return ChatColor.GRAY + "Tháp Pháo (Ghast)";
+        return TerritoryDefense.getInstance().getConfig().getString(CFG + ".display-name", "&7Tháp Pháo (Ghast)");
     }
 
     @Override
     public double getScanningRadius() {
-        return 20.0; // Tầm đánh xa nhất vương quốc
+        return TerritoryDefense.getInstance().getConfig().getDouble(CFG + ".scanning-radius", 20.0);
     }
 
     @Override
     public int getAttackSpeedTicks() {
-        return 60; // 3.0 giây nạp đạn
+        return TerritoryDefense.getInstance().getConfig().getInt(CFG + ".attack-speed-ticks", 60);
     }
 
     @Override
     public double getDamage() {
-        // Tịnh tiến sát thương bộc phá: 40.0 -> 60.0 -> 88.0 -> 120.0 -> 160.0 DMG theo cấp độ
+        FileConfiguration cfg = TerritoryDefense.getInstance().getConfig();
+        List<Double> damageList = cfg.getDoubleList(CFG + ".damage");
+        if (damageList != null && level >= 1 && level <= damageList.size()) {
+            return damageList.get(level - 1);
+        }
         return switch (level) {
-            case 1 -> 10.0;
-            case 2 -> 14.0;
-            case 3 -> 18.0;
-            case 4 -> 22.0;
-            case 5 -> 26.0;
-            default -> 10.0;
+            case 2 -> 72.0; case 3 -> 105.0; case 4 -> 144.0; case 5 -> 192.0;
+            default -> 48.0;
         };
     }
 
@@ -69,8 +73,10 @@ public class ArtilleryTower extends Tower {
         impactLoc.getWorld().spawnParticle(org.bukkit.Particle.EXPLOSION_EMITTER, impactLoc, 3, 0.2, 0.2, 0.2, 0.1);
         impactLoc.getWorld().playSound(impactLoc, Sound.ENTITY_GENERIC_EXPLODE, 1.0f, 0.8f);
 
-        // Quét sát thương diện rộng AoE bán kính 4.0 blocks (theo đúng thông số GDD)
-        double aoeRadius = 4.0;
+        FileConfiguration cfg = TerritoryDefense.getInstance().getConfig();
+        double aoeRadius = cfg.getDouble(CFG + ".special.aoe-radius", 4.0);
+        int stunTicks = cfg.getInt(CFG + ".special.stun-duration-ticks", 30);
+
         Collection<Entity> potentialTargets = impactLoc.getWorld().getNearbyEntities(impactLoc, aoeRadius, aoeRadius, aoeRadius);
 
         for (Entity entity : potentialTargets) {
@@ -80,15 +86,14 @@ public class ArtilleryTower extends Tower {
             if (isValidTarget(living, core, TerritoryDefense.getInstance())
                     || (isRaidMob && !living.isDead() && living.isValid())) {
 
-                // Gây sát thương AoE diện rộng
                 if (core != null && core.getOwnerUUID() != null) {
                     living.setMetadata("td_last_tower_damager_uuid", new FixedMetadataValue(TerritoryDefense.getInstance(), core.getOwnerUUID().toString()));
                 }
                 living.damage(finalDamage);
                 living.setMetadata("td_last_damaged_by_tower", new FixedMetadataValue(TerritoryDefense.getInstance(), true));
 
-                // Áp hiệu ứng làm choáng (Stun) thông qua Slowness cấp cực đại trong 1.5 giây (30 ticks)
-                living.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 30, 10));
+                // Áp hiệu ứng Slowness (stun) theo config
+                living.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, stunTicks, 10));
             }
         }
     }

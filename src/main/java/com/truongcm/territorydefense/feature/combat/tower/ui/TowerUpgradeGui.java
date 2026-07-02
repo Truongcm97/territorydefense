@@ -116,6 +116,12 @@ public class TowerUpgradeGui extends CustomHolder {
             return;
         }
 
+        if (nextLevel > core.getLevel()) {
+            player.sendMessage(ChatColor.RED + "[Tháp] Cấp độ tháp không thể cao hơn cấp độ Lõi Lãnh Thổ (Lõi hiện tại Cấp " + core.getLevel() + ")!");
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            return;
+        }
+
         double moneyCost = plugin.getConfig().getDouble("tower-settings.upgrade-costs.level-" + nextLevel + ".money", 0.0);
         int shardCost = plugin.getConfig().getInt("tower-settings.upgrade-costs.level-" + nextLevel + ".shards", 0);
 
@@ -255,6 +261,13 @@ public class TowerUpgradeGui extends CustomHolder {
         if (tower.getLevel() >= 5) {
             return createGuiItem(Material.NETHER_STAR, ChatColor.GOLD + "" + ChatColor.BOLD + "Tháp Đạt Cấp Cực Đại (Cấp 5)", "NONE",
                     ChatColor.GRAY + "Sức mạnh phòng thủ và hiệu ứng tháp đạt mốc tối đa!"
+            );
+        }
+
+        if (nextLevel > core.getLevel()) {
+            return createGuiItem(Material.BARRIER, ChatColor.RED + "" + ChatColor.BOLD + "YÊU CẦU CẤP ĐỘ LÕI (CẤP " + nextLevel + ")", "NONE",
+                    ChatColor.GRAY + "Cấp độ tháp không thể vượt quá cấp độ của Lõi Lãnh Thổ.",
+                    ChatColor.GRAY + "Cấp độ Lõi hiện tại: Cấp " + core.getLevel()
             );
         }
 

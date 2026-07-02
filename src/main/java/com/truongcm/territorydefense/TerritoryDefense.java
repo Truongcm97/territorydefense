@@ -54,6 +54,8 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
 
     // Toàn bộ các phân hệ quản lý độc lập (Modular Managers)
     private CoreManager coreManager;
+    private com.truongcm.territorydefense.feature.core.CoreStorage coreStorage;
+    private com.truongcm.territorydefense.feature.core.CoreGameplayListener coreGameplayListener;
     private AllianceManager allianceManager;
     private BorderVisualizer borderVisualizer;
     private SecureEntityTracker secureEntityTracker;
@@ -90,6 +92,8 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
         // 3. Khởi tạo toàn bộ các bộ quản lý độc lập
         this.allianceManager = new AllianceManager(this);
         this.coreManager = new CoreManager(this);
+        this.coreStorage = new com.truongcm.territorydefense.feature.core.CoreStorage(this, this.coreManager);
+        this.coreGameplayListener = new com.truongcm.territorydefense.feature.core.CoreGameplayListener(this, this.coreManager);
         this.borderVisualizer = new BorderVisualizer(this);
         this.secureEntityTracker = new SecureEntityTracker();
         this.combatDamageTracker = new CombatDamageTracker();
@@ -129,20 +133,38 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
             this.builderManager.removeAllActiveNPCs();
         }
 
-        // GHI LẠI TOÀN BỘ LIÊN MINH XUỐNG CƠ SỞ DỮ LIỆU FILE (alliances.yml)
-        if (this.allianceManager != null) {
-            this.allianceManager.saveAlliances();
-            getLogger().info("[TD] Đã lưu trữ toàn bộ dữ liệu Liên Minh vào alliances.yml thành công.");
-        }
-
-        // Lưu trữ khẩn cấp toàn bộ dữ liệu trạng thái Lõi
-        if (this.coreManager != null) {
-            this.coreManager.saveAllCores();
-            getLogger().info("[TD] Đã lưu trữ toàn bộ dữ liệu Lõi Lãnh Thổ vào YML và PDC an toàn.");
-        }
+        // Lưu toàn bộ dữ liệu hệ thống
+        saveAllData();
 
         // Dọn dẹp Hologram để tránh thực thể mồ côi khi tắt/restart
         com.truongcm.territorydefense.feature.core.HologramManager.cleanupAllHologramEntities();
+    }
+
+    /**
+     * Phương thức lưu trữ toàn bộ dữ liệu hệ thống (Cores, Blueprints, OTR động thông qua tháp canh, kho thực phẩm, kho nguyên liệu xây dựng...)
+     */
+    public void saveAllData() {
+        getLogger().info("[TD] Bat dau luu lai toan bo du lieu he thong...");
+
+        // 1. Ghi lại dữ liệu Liên minh xuống alliances.yml
+        if (this.allianceManager != null) {
+            this.allianceManager.saveAlliances();
+            getLogger().info("[TD] Da luu tru toan bo du lieu Lien Minh vao alliances.yml.");
+        }
+
+        // 2. Ghi lại dữ liệu Tháp canh xuống towers.yml (quyết định OTR động dựa theo số lượng/cấp độ tháp)
+        if (this.towerManager != null) {
+            this.towerManager.saveAllTowers();
+            getLogger().info("[TD] Da luu tru toan bo du lieu Tháp canh vao towers.yml.");
+        }
+
+        // 3. Ghi lại toàn bộ dữ liệu Lõi (Cores, Bản vẽ blueprints, Kho thực phẩm, Kho nguyên liệu, Shards, Bảo vệ hòa bình...) vào userdata
+        if (this.coreManager != null) {
+            this.coreManager.saveAllCores();
+            getLogger().info("[TD] Da luu tru toan bo du lieu Loi Lanh Tho vao cac file userdata rieng biet.");
+        }
+
+        getLogger().info("[TD] Da hoan thanh luu tru toan bo du lieu he thong thanh cong.");
     }
 
     /**
@@ -155,7 +177,7 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
         pm.registerEvents(this, this);
 
         // Đăng ký các bộ quản trị Listener khác
-        pm.registerEvents(coreManager, this); // Đăng ký Listener duy nhất cho thực thể coreManager chính
+        pm.registerEvents(coreGameplayListener, this); // Đăng ký Listener duy nhất cho thực thể coreGameplayListener chính
         pm.registerEvents(secureEntityTracker, this);
         pm.registerEvents(combatDamageTracker, this);
         pm.registerEvents(fepManager, this);
@@ -280,6 +302,8 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
     public ProtocolManager getProtocolManager() { return protocolManager; }
     public boolean isProtocolLibEnabled() { return protocolLibEnabled; }
     public CoreManager getCoreManager() { return coreManager; }
+    public com.truongcm.territorydefense.feature.core.CoreStorage getCoreStorage() { return coreStorage; }
+    public com.truongcm.territorydefense.feature.core.CoreGameplayListener getCoreGameplayListener() { return coreGameplayListener; }
     public AllianceManager getAllianceManager() { return allianceManager; }
     public BorderVisualizer getBorderVisualizer() { return borderVisualizer; }
     public SecureEntityTracker getSecureEntityTracker() { return secureEntityTracker; }

@@ -22,7 +22,10 @@ import java.util.List;
 public class TerritoryTabCompleter implements TabCompleter {
 
     private final TerritoryDefense plugin;
-    private final List<String> subCommands = Arrays.asList("boundary", "accepttax", "migrate", "help", "getcore", "getstarter");
+    private final List<String> subCommands = Arrays.asList(
+            "boundary", "accepttax", "migrate", "help", "getcore", "getstarter", "recall",
+            "copydesign", "saochep", "shareblueprint", "chiase", "sellblueprint", "banbanve"
+    );
 
     public TerritoryTabCompleter(TerritoryDefense plugin) {
         this.plugin = plugin;
@@ -39,6 +42,10 @@ public class TerritoryTabCompleter implements TabCompleter {
             // Chỉ hiển thị lệnh Admin nếu người chơi có quyền
             if (sender.hasPermission("territorydefense.admin")) {
                 commands.add("resetstarter");
+                commands.add("resetdifficulty");
+                commands.add("rebuildholograms");
+                commands.add("rebuildhlg");
+                commands.add("save");
             }
 
             StringUtil.copyPartialMatches(args[0], commands, completions);
@@ -48,9 +55,19 @@ public class TerritoryTabCompleter implements TabCompleter {
 
         // Gợi ý cho đối số thứ hai
         if (args.length == 2) {
-            if ("boundary".equalsIgnoreCase(args[0])) {
+            String firstArg = args[0].toLowerCase();
+            if ("boundary".equals(firstArg)) {
                 StringUtil.copyPartialMatches(args[1], Collections.singletonList("toggle"), completions);
-            } else if ("resetstarter".equalsIgnoreCase(args[0]) && sender.hasPermission("territorydefense.admin")) {
+            } else if ("shareblueprint".equals(firstArg) || "chiase".equals(firstArg)) {
+                StringUtil.copyPartialMatches(args[1], Arrays.asList("on", "off"), completions);
+            } else if ("copydesign".equals(firstArg) || "saochep".equals(firstArg)) {
+                List<String> slots = new ArrayList<>();
+                for (int i = 1; i <= 54; i++) {
+                    slots.add(String.valueOf(i));
+                }
+                StringUtil.copyPartialMatches(args[1], slots, completions);
+            } else if (("resetstarter".equals(firstArg) || "resetdifficulty".equals(firstArg) || "recall".equals(firstArg)) 
+                    && sender.hasPermission("territorydefense.admin")) {
                 // Gợi ý tên người chơi đang online
                 for (Player p : org.bukkit.Bukkit.getOnlinePlayers()) {
                     if (p.getName().toLowerCase().startsWith(args[1].toLowerCase())) {

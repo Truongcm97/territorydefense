@@ -29,7 +29,7 @@ import java.util.UUID;
 public class NPCBuilder {
     private final UUID builderUUID;
     private final UUID ownerCoreUUID;
-    private final Villager entity;
+    private Villager entity = null;
     private boolean isRebuilding = false;
     private boolean isPausedForMaterials = false;
     private BukkitTask activeTask = null;
@@ -39,47 +39,41 @@ public class NPCBuilder {
     private TerritoryCore activeCore = null;
     private Player activeRequester = null;
     private long lastNotifyTime = 0;
-    private boolean isHidden = false;
+    private boolean isHidden = true;
 
     public List<TerritoryCore.BlockSnapshot> getLastPreRaidSnapshot() {
         return lastPreRaidSnapshot;
     }
 
     public void hideInCore(TerritoryCore core) {
-        if (isHidden) return;
+        if (entity != null) {
+            entity.remove();
+            entity = null;
+        }
         isHidden = true;
-        entity.setInvisible(true);
-        entity.setAI(false);
-        entity.setInvulnerable(true);
-        entity.setSilent(true);
-        entity.setCollidable(false);
-        entity.teleport(core.getLocation().clone().add(0.5, 0.5, 0.5));
     }
 
     public void showFromCore(TerritoryCore core) {
-        if (!isHidden) return;
+        if (entity == null || !entity.isValid()) {
+            Location loc = core.getLocation().clone().add(0.5, 1.0, 0.5);
+            entity = loc.getWorld().spawn(loc, Villager.class);
+            applyAttributes();
+        }
         isHidden = false;
-        entity.setInvisible(false);
-        entity.setAI(true);
-        entity.setInvulnerable(false);
-        entity.setSilent(false);
-        entity.setCollidable(true);
-        entity.teleport(core.getLocation().clone().add(0.5, 1.0, 0.5));
+        if (entity != null) {
+            entity.setInvisible(false);
+            entity.setAI(true);
+            entity.setInvulnerable(false);
+            entity.setSilent(false);
+            entity.setCollidable(true);
+        }
     }
 
-    public NPCBuilder(UUID builderUUID, UUID ownerCoreUUID, Villager entity) {
+    public NPCBuilder(UUID builderUUID, UUID ownerCoreUUID) {
         this.builderUUID = builderUUID;
         this.ownerCoreUUID = ownerCoreUUID;
-        this.entity = entity;
-        applyAttributes();
-
-        TerritoryDefense plugin = TerritoryDefense.getInstance();
-        TerritoryCore core = plugin.getCoreManager().getAllActiveCores().stream()
-                .filter(c -> c.getCoreId().equals(ownerCoreUUID))
-                .findFirst().orElse(null);
-        if (core != null) {
-            hideInCore(core);
-        }
+        this.entity = null;
+        this.isHidden = true;
     }
 
     public UUID getBuilderUUID() {
@@ -120,6 +114,7 @@ public class NPCBuilder {
         entity.setAI(true);
         entity.setGravity(false);
         entity.setCollidable(false);
+        entity.setInvulnerable(true);
     }
 
     public void startScanAndSave(TerritoryCore core, int slotIndex, Player requester) {
@@ -137,10 +132,26 @@ public class NPCBuilder {
         TerritoryDefense plugin = TerritoryDefense.getInstance();
         Location coreLoc = core.getLocation();
         int radius = plugin.getCoreManager().getCoreRadius(core);
-        int scanHeightAbove = 30;
+        int scanHeightBelow = plugin.getConfig().getInt("builder-settings.scan-height-below", 5);
+        int scanHeightAbove = plugin.getConfig().getInt("builder-settings.scan-height-above", 15);
 
-        int minY = coreLoc.getBlockY() - 2;
-        int maxY = coreLoc.getBlockY() + scanHeightAbove;
+        class LocationDelta {
+            final int dx, dy, dz;
+            LocationDelta(int dx, int dy, int dz) {
+                this.dx = dx;
+                this.dy = dy;
+                this.dz = dz;
+            }
+        }
+
+        java.util.Queue<LocationDelta> scanQueue = new java.util.LinkedList<>();
+        for (int dy = -scanHeightBelow; dy <= scanHeightAbove; dy++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    scanQueue.add(new LocationDelta(dx, dy, dz));
+                }
+            }
+        }
 
         List<TerritoryCore.BlockSnapshot> scannedBlocks = new ArrayList<>();
 
@@ -149,11 +160,34 @@ public class NPCBuilder {
         }
 
         new BukkitRunnable() {
-            int currentY = minY;
+            private static final int BLOCKS_PER_TICK = 1500;
 
             @Override
             public void run() {
-                if (currentY > maxY) {
+                int processed = 0;
+                while (!scanQueue.isEmpty() && processed < BLOCKS_PER_TICK) {
+                    LocationDelta delta = scanQueue.poll();
+                    Block block = coreLoc.getWorld().getBlockAt(
+                        coreLoc.getBlockX() + delta.dx,
+                        coreLoc.getBlockY() + delta.dy,
+                        coreLoc.getBlockZ() + delta.dz
+                    );
+                    Material type = block.getType();
+                    if (type != Material.AIR && type != Material.CAVE_AIR && type != Material.VOID_AIR && type != Material.CONDUIT) {
+                        Location blockLoc = block.getLocation();
+                        if (plugin.getTowerManager() != null && plugin.getTowerManager().getActiveTowers().containsKey(blockLoc)) {
+                            processed++;
+                            continue;
+                        }
+                        String blockDataStr = block.getBlockData().getAsString();
+                        scannedBlocks.add(new TerritoryCore.BlockSnapshot(
+                            delta.dx, delta.dy, delta.dz, type.name(), blockDataStr
+                        ));
+                    }
+                    processed++;
+                }
+
+                if (scanQueue.isEmpty()) {
                     if (slotIndex >= 0 && slotIndex < 54) {
                         core.getBlueprintSlots().get(slotIndex).clear();
                         core.getBlueprintSlots().get(slotIndex).addAll(scannedBlocks);
@@ -173,29 +207,7 @@ public class NPCBuilder {
                     }
                     hideInCore(core);
                     cancel();
-                    return;
                 }
-
-                int centerX = coreLoc.getBlockX();
-                int centerZ = coreLoc.getBlockZ();
-
-                for (int dx = -radius; dx <= radius; dx++) {
-                    for (int dz = -radius; dz <= radius; dz++) {
-                        if (dx * dx + dz * dz <= radius * radius) {
-                            Block block = coreLoc.getWorld().getBlockAt(centerX + dx, currentY, centerZ + dz);
-                            Material type = block.getType();
-                            if (type != Material.AIR && type != Material.CAVE_AIR && type != Material.VOID_AIR && type != Material.CONDUIT) {
-                                Location blockLoc = block.getLocation();
-                                if (plugin.getTowerManager() != null && plugin.getTowerManager().getActiveTowers().containsKey(blockLoc)) {
-                                    continue;
-                                }
-                                String blockDataStr = block.getBlockData().getAsString();
-                                scannedBlocks.add(new TerritoryCore.BlockSnapshot(dx, currentY - coreLoc.getBlockY(), dz, type.name(), blockDataStr));
-                            }
-                        }
-                    }
-                }
-                currentY++;
             }
         }.runTaskTimer(plugin, 1L, 1L);
     }
@@ -214,7 +226,7 @@ public class NPCBuilder {
         TerritoryDefense plugin = TerritoryDefense.getInstance();
         int radius = plugin.getCoreManager().getCoreRadius(core);
         for (TerritoryCore.BlockSnapshot snap : design) {
-            if (snap.relX * snap.relX + snap.relZ * snap.relZ > radius * radius) {
+            if (Math.abs(snap.relX) > radius || Math.abs(snap.relZ) > radius) {
                 if (requester != null) {
                     requester.sendMessage(ChatColor.RED + "[Kiến Thiết] Không thể xây dựng! Bản thiết kế này có diện tích lớn hơn diện tích lãnh thổ hiện tại của bạn.");
                 }
@@ -236,14 +248,7 @@ public class NPCBuilder {
             requester.sendMessage(ChatColor.GOLD + "Thợ Xây bắt đầu tái thiết lãnh thổ dựa trên bản vẽ thiết kế...");
         }
 
-        int blocksPerSecond = switch (core.getBuilderLevel()) {
-            case 1 -> 2;
-            case 2 -> 5;
-            case 3 -> 10;
-            case 4 -> 15;
-            case 5 -> 25;
-            default -> 2;
-        };
+        int blocksPerSecond = plugin.getConfig().getInt("builder-settings.levels." + core.getBuilderLevel(), 2);
         int intervalTicks = Math.max(1, 20 / blocksPerSecond);
 
         if (activeTask != null) {
@@ -253,61 +258,30 @@ public class NPCBuilder {
         activeTask = new BukkitRunnable() {
             @Override
             public void run() {
-                if (!isRebuilding || isPausedForMaterials) {
-                    cancel();
-                    return;
-                }
+                try {
+                    if (!isRebuilding || isPausedForMaterials) {
+                        cancel();
+                        return;
+                    }
 
-                boolean allBuilt = true;
-                for (TerritoryCore.BlockSnapshot snap : activeDesign) {
-                    Location blockLoc = activeCore.getLocation().clone().add(snap.relX, snap.relY, snap.relZ);
-                    Block block = blockLoc.getBlock();
-                    Material targetMat = Material.matchMaterial(snap.material);
-                    if (targetMat != null) {
-                        if (block.getType() != targetMat || !block.getBlockData().getAsString().equals(snap.blockData)) {
-                            allBuilt = false;
-                            break;
+                    boolean allBuilt = true;
+                    for (TerritoryCore.BlockSnapshot snap : activeDesign) {
+                        Location blockLoc = activeCore.getLocation().clone().add(snap.relX, snap.relY, snap.relZ);
+                        Block block = blockLoc.getBlock();
+                        Material targetMat = Material.matchMaterial(snap.material);
+                        if (targetMat != null) {
+                            if (!isCompatibleBlock(block, targetMat, snap.blockData)) {
+                                allBuilt = false;
+                                break;
+                            }
                         }
                     }
-                }
 
-                if (allBuilt) {
-                    isRebuilding = false;
-                    if (activeRequester != null && activeRequester.isOnline()) {
-                        activeRequester.sendMessage(ChatColor.GREEN + "[Kiến Thiết] Thợ Xây đã hoàn thành tiến trình tái thiết lãnh thổ!");
-                        activeRequester.playSound(activeRequester.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
-                    }
-                    hideInCore(activeCore);
-                    plugin.getCoreManager().registerCore(activeCore.getLocation(), activeCore);
-                    cancel();
-                    return;
-                }
-
-                int batch = Math.max(1, blocksPerSecond / (20 / intervalTicks));
-                int blocksPlacedThisTick = 0;
-
-                for (int i = 0; i < activeDesign.size() && blocksPlacedThisTick < batch; i++) {
-                    TerritoryCore.BlockSnapshot snap = activeDesign.get(i);
-                    Location blockLoc = activeCore.getLocation().clone().add(snap.relX, snap.relY, snap.relZ);
-                    Block block = blockLoc.getBlock();
-                    Material targetMat = Material.matchMaterial(snap.material);
-
-                    if (targetMat == null) continue;
-
-                    if (block.getType() == targetMat && block.getBlockData().getAsString().equals(snap.blockData)) {
-                        continue;
-                    }
-
-                    // CHECK FOR FEP/PEP REQUIREMENT
-                    if (activeCore.getFep() < 1.0) {
-                        isPausedForMaterials = true;
-                        long now = System.currentTimeMillis();
-                        if (now - lastNotifyTime > 15000) {
-                            lastNotifyTime = now;
-                            if (activeRequester != null && activeRequester.isOnline()) {
-                                activeRequester.sendMessage(ChatColor.RED + "[Kiến Thiết] Thợ Xây đã tạm ngưng do lõi không đủ năng lượng FEP/PEP để tiếp tục sửa chữa/đặt khối!");
-                                activeRequester.sendMessage(ChatColor.YELLOW + "[Kiến Thiết] Hãy nạp thêm thức ăn vào Lõi để tiếp tục.");
-                            }
+                    if (allBuilt) {
+                        isRebuilding = false;
+                        if (activeRequester != null && activeRequester.isOnline()) {
+                            activeRequester.sendMessage(ChatColor.GREEN + "[Kiến Thiết] Thợ Xây đã hoàn thành tiến trình tái thiết lãnh thổ!");
+                            activeRequester.playSound(activeRequester.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
                         }
                         hideInCore(activeCore);
                         plugin.getCoreManager().registerCore(activeCore.getLocation(), activeCore);
@@ -315,57 +289,98 @@ public class NPCBuilder {
                         return;
                     }
 
-                    Inventory rebuildInv = activeCore.getRebuildWarehouse();
-                    boolean hasMaterial = false;
+                    int batch = Math.max(1, blocksPerSecond / (20 / intervalTicks));
+                    int blocksPlacedThisTick = 0;
 
-                    for (int slotIdx = 0; slotIdx < rebuildInv.getSize(); slotIdx++) {
-                        ItemStack item = rebuildInv.getItem(slotIdx);
-                        if (item != null && item.getType() == targetMat && item.getAmount() > 0) {
-                            item.setAmount(item.getAmount() - 1);
-                            rebuildInv.setItem(slotIdx, item.getAmount() > 0 ? item : null);
-                            hasMaterial = true;
-                            break;
+                    for (int i = 0; i < activeDesign.size() && blocksPlacedThisTick < batch; i++) {
+                        TerritoryCore.BlockSnapshot snap = activeDesign.get(i);
+                        Location blockLoc = activeCore.getLocation().clone().add(snap.relX, snap.relY, snap.relZ);
+                        Block block = blockLoc.getBlock();
+                        Material targetMat = Material.matchMaterial(snap.material);
+
+                        if (targetMat == null) continue;
+
+                        if (isCompatibleBlock(block, targetMat, snap.blockData)) {
+                            continue;
+                        }
+
+                        // CHECK FOR FEP/PEP REQUIREMENT
+                        if (activeCore.getFep() < 1.0) {
+                            isPausedForMaterials = true;
+                            long now = System.currentTimeMillis();
+                            if (now - lastNotifyTime > 15000) {
+                                lastNotifyTime = now;
+                                if (activeRequester != null && activeRequester.isOnline()) {
+                                    activeRequester.sendMessage(ChatColor.RED + "[Kiến Thiết] Thợ Xây đã tạm ngưng do lõi không đủ năng lượng FEP/PEP để tiếp tục sửa chữa/đặt khối!");
+                                    activeRequester.sendMessage(ChatColor.YELLOW + "[Kiến Thiết] Hãy nạp thêm thức ăn vào Lõi để tiếp tục.");
+                                }
+                            }
+                            hideInCore(activeCore);
+                            plugin.getCoreManager().registerCore(activeCore.getLocation(), activeCore);
+                            cancel();
+                            return;
+                        }
+
+                        Inventory rebuildInv = activeCore.getRebuildWarehouse();
+                        boolean hasMaterial = false;
+
+                        for (int slotIdx = 0; slotIdx < rebuildInv.getSize(); slotIdx++) {
+                            ItemStack item = rebuildInv.getItem(slotIdx);
+                            if (item != null && item.getType() == targetMat && item.getAmount() > 0) {
+                                item.setAmount(item.getAmount() - 1);
+                                rebuildInv.setItem(slotIdx, item.getAmount() > 0 ? item : null);
+                                hasMaterial = true;
+                                break;
+                            }
+                        }
+
+                        if (hasMaterial) {
+                            if (entity != null && entity.isValid()) {
+                                entity.teleport(blockLoc.clone().add(0.5, 1.0, 0.5));
+                            }
+
+                            block.setType(targetMat, false);
+                            try {
+                                BlockData data = Bukkit.createBlockData(snap.blockData);
+                                block.setBlockData(data, true);
+                            } catch (Exception ignored) {
+                                block.setBlockData(targetMat.createBlockData(), true);
+                            }
+
+                            try {
+                                blockLoc.getWorld().spawnParticle(Particle.valueOf("SMOKE"), blockLoc.clone().add(0.5, 0.5, 0.5), 5, 0.2, 0.2, 0.2, 0.02);
+                            } catch (Exception ignored) {}
+                            blockLoc.getWorld().playSound(blockLoc, Sound.BLOCK_STONE_PLACE, 1.0f, 1.0f);
+                            
+                            // Deduct 1 FEP / PEP
+                            activeCore.setFep(activeCore.getFep() - 1.0);
+
+                            blocksPlacedThisTick++;
                         }
                     }
 
-                    if (hasMaterial) {
-                        if (entity != null && entity.isValid()) {
-                            entity.teleport(blockLoc.clone().add(0.5, 1.0, 0.5));
+                    if (blocksPlacedThisTick == 0) {
+                        isPausedForMaterials = true;
+                        long now = System.currentTimeMillis();
+                        if (now - lastNotifyTime > 15000) {
+                            lastNotifyTime = now;
+                            if (activeRequester != null && activeRequester.isOnline()) {
+                                activeRequester.sendMessage(ChatColor.RED + "[Kiến Thiết] Thợ Xây đã tạm ngưng làm việc do thiếu nguyên liệu để tiếp tục xây dựng!");
+                                reportMissingMaterials(activeCore, activeDesign, activeRequester);
+                                activeRequester.sendMessage(ChatColor.YELLOW + "[Kiến Thiết] Mẹo: Hãy nạp thêm block vào Rương Tái Thiết để Thợ Xây tự động tiếp tục.");
+                            }
                         }
-
-                        block.setType(targetMat, false);
-                        try {
-                            BlockData data = Bukkit.createBlockData(snap.blockData);
-                            block.setBlockData(data, true);
-                        } catch (Exception ignored) {
-                            block.setBlockData(targetMat.createBlockData(), true);
-                        }
-
-                        try {
-                            blockLoc.getWorld().spawnParticle(Particle.valueOf("SMOKE"), blockLoc.clone().add(0.5, 0.5, 0.5), 5, 0.2, 0.2, 0.2, 0.02);
-                        } catch (Exception ignored) {}
-                        blockLoc.getWorld().playSound(blockLoc, Sound.BLOCK_STONE_PLACE, 1.0f, 1.0f);
-                        
-                        // Deduct 1 FEP / PEP
-                        activeCore.setFep(activeCore.getFep() - 1.0);
-
-                        blocksPlacedThisTick++;
+                        hideInCore(activeCore);
+                        plugin.getCoreManager().registerCore(activeCore.getLocation(), activeCore);
+                        cancel();
                     }
-                }
-
-                if (blocksPlacedThisTick == 0) {
-                    isPausedForMaterials = true;
-                    long now = System.currentTimeMillis();
-                    if (now - lastNotifyTime > 15000) {
-                        lastNotifyTime = now;
-                        if (activeRequester != null && activeRequester.isOnline()) {
-                            activeRequester.sendMessage(ChatColor.RED + "[Kiến Thiết] Thợ Xây đã tạm ngưng làm việc do thiếu nguyên liệu để tiếp tục xây dựng!");
-                            reportMissingMaterials(activeCore, activeDesign, activeRequester);
-                            activeRequester.sendMessage(ChatColor.YELLOW + "[Kiến Thiết] Mẹo: Hãy nạp thêm block vào Rương Tái Thiết để Thợ Xây tự động tiếp tục.");
-                        }
+                } catch (Exception e) {
+                    plugin.getLogger().log(java.util.logging.Level.SEVERE, "Loi xay ra trong qua trinh tai thiet cua Tho Xay NPC!", e);
+                    isRebuilding = false;
+                    isPausedForMaterials = false;
+                    if (activeCore != null) {
+                        hideInCore(activeCore);
                     }
-                    hideInCore(activeCore);
-                    plugin.getCoreManager().registerCore(activeCore.getLocation(), activeCore);
                     cancel();
                 }
             }
@@ -381,7 +396,7 @@ public class NPCBuilder {
             Block block = blockLoc.getBlock();
             Material targetMat = Material.matchMaterial(snap.material);
             if (targetMat != null) {
-                if (block.getType() != targetMat || !block.getBlockData().getAsString().equals(snap.blockData)) {
+                if (!isCompatibleBlock(block, targetMat, snap.blockData)) {
                     missing.put(targetMat, missing.getOrDefault(targetMat, 0) + 1);
                 }
             }
@@ -435,5 +450,49 @@ public class NPCBuilder {
             hideInCore(activeCore);
             TerritoryDefense.getInstance().getCoreManager().registerCore(activeCore.getLocation(), activeCore);
         }
+    }
+
+    public boolean isCompatibleBlock(Block block, Material targetMat, String targetDataStr) {
+        Material currentMat = block.getType();
+        if (currentMat == targetMat) {
+            if (isCropOrPlant(targetMat) || isLiquid(targetMat) || isSoil(targetMat) || isUtilityBlock(targetMat)) {
+                return true;
+            }
+            return block.getBlockData().getAsString().equals(targetDataStr);
+        }
+        
+        // Soil cross-compatibility
+        if (isSoil(currentMat) && isSoil(targetMat)) {
+            return true;
+        }
+        
+        return false;
+    }
+
+    private boolean isCropOrPlant(Material mat) {
+        String name = mat.name();
+        return name.contains("WHEAT") || name.contains("CARROT") || name.contains("POTATO") 
+            || name.contains("BEETROOT") || name.contains("STEM") || name.contains("COCOA") 
+            || name.contains("BUSH") || name.contains("CROPS") || name.contains("NETHER_WART");
+    }
+
+    private boolean isLiquid(Material mat) {
+        return mat == Material.WATER || mat == Material.LAVA;
+    }
+
+    private boolean isSoil(Material mat) {
+        return mat == Material.FARMLAND || mat == Material.DIRT || mat == Material.GRASS_BLOCK || mat == Material.DIRT_PATH;
+    }
+
+    private boolean isUtilityBlock(Material mat) {
+        String name = mat.name();
+        return name.contains("STAIRS") || name.contains("SLAB") || name.contains("FENCE") 
+            || name.contains("WALL") || name.contains("CHEST") || name.contains("FURNACE") 
+            || name.contains("DOOR") || name.contains("GATE") || name.contains("TRAPDOOR")
+            || name.contains("PANE") || name.contains("GLASS") || name.contains("LOG") 
+            || name.contains("WOOD") || name.contains("BUTTON") || name.contains("SIGN")
+            || name.contains("BED") || name.contains("TORCH") || name.contains("LANTERN")
+            || name.contains("PISTON") || name.contains("OBSIDIAN") || name.contains("STONE")
+            || name.contains("BRICK") || name.contains("TERRACOTTA") || name.contains("CONCRETE");
     }
 }

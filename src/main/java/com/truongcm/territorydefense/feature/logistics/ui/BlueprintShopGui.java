@@ -48,7 +48,6 @@ public class BlueprintShopGui extends CustomHolder {
         for (TerritoryCore targetCore : plugin.getCoreManager().getAllActiveCores()) {
             if (slot >= 45) break;
             if (targetCore.getCoreId().equals(buyerCore.getCoreId())) continue; // Không tự mua của mình
-            if (!targetCore.isPublicBlueprintShared()) continue; // Phải bật công khai
 
             // Duyệt qua toàn bộ 54 slot của lõi này để tìm các slot đang rao bán
             for (int s = 0; s < 54; s++) {

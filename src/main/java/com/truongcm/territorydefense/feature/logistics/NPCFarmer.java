@@ -115,8 +115,19 @@ public class NPCFarmer {
         if (ticksSinceLastScan < scanFrequency) return;
         ticksSinceLastScan = 0;
 
-        // Nếu năng lượng của core đã đầy và kho thực phẩm cũng đầy, ép Farmer về trạng thái IDLE
-        if (core.getFep() >= core.getMaxFepCapacity() && core.getFoodWarehouse().firstEmpty() == -1) {
+        // Kiểm tra điều kiện nghỉ ngơi: chỉ đi làm việc/lấy đồ khi FEP dưới 95% hoặc kho thực phẩm lõi cạn kiệt (dưới 10 thực phẩm)
+        boolean isLowOnFood = true;
+        int foodCount = 0;
+        for (ItemStack item : core.getFoodWarehouse().getContents()) {
+            if (item != null && item.getType() != Material.AIR && FarmerLogic.isFoodItem(item.getType())) {
+                foodCount += item.getAmount();
+            }
+        }
+        if (foodCount >= 10) {
+            isLowOnFood = false;
+        }
+
+        if (core.getFep() >= core.getMaxFepCapacity() * 0.95 && !isLowOnFood) {
             this.state = FarmerState.IDLE;
             Location wanderLoc = core.getLocation().clone().add((Math.random() - 0.5) * 10, 0, (Math.random() - 0.5) * 10);
             entity.getPathfinder().moveTo(wanderLoc);
@@ -148,8 +159,19 @@ public class NPCFarmer {
     }
 
     private void evaluateNextAction(TerritoryCore core) {
-        // Chỉ làm việc khi Lõi chưa đầy năng lượng hoặc kho thực phẩm lõi vẫn còn chỗ trống
-        if (core.getFep() < core.getMaxFepCapacity() || core.getFoodWarehouse().firstEmpty() != -1) {
+        boolean isLowOnFood = true;
+        int foodCount = 0;
+        for (ItemStack item : core.getFoodWarehouse().getContents()) {
+            if (item != null && item.getType() != Material.AIR && FarmerLogic.isFoodItem(item.getType())) {
+                foodCount += item.getAmount();
+            }
+        }
+        if (foodCount >= 10) {
+            isLowOnFood = false;
+        }
+
+        // Chỉ đi tìm kiếm thức ăn/làm việc nếu FEP dưới 95% HOẶC kho thực phẩm bị thiếu hụt dưới 10 sản phẩm
+        if (core.getFep() < core.getMaxFepCapacity() * 0.95 || isLowOnFood) {
             // Ưu tiên đi lục rương tìm thức ăn có sẵn trước
             this.state = FarmerState.SEARCH_CHEST;
         } else {
@@ -171,8 +193,17 @@ public class NPCFarmer {
                 Inventory chestInv = chest.getInventory();
                 for (ItemStack item : chestInv.getContents()) {
                     if (item != null && FarmerLogic.isFoodItem(item.getType())) {
-                        virtualBag.addItem(item.clone());
-                        chestInv.removeItem(item);
+                        ItemStack toAdd = item.clone();
+                        java.util.HashMap<Integer, ItemStack> leftovers = virtualBag.addItem(toAdd);
+                        int addedAmount = toAdd.getAmount();
+                        if (!leftovers.isEmpty()) {
+                            addedAmount -= leftovers.get(0).getAmount();
+                        }
+                        if (addedAmount > 0) {
+                            ItemStack toRemove = item.clone();
+                            toRemove.setAmount(addedAmount);
+                            chestInv.removeItem(toRemove);
+                        }
                         break; // Lấy 1 slot thức ăn
                     }
                 }
@@ -191,8 +222,17 @@ public class NPCFarmer {
                 Inventory chestInv = chest.getInventory();
                 for (ItemStack item : chestInv.getContents()) {
                     if (item != null && FarmerLogic.isSeedItem(item.getType())) {
-                        virtualBag.addItem(item.clone());
-                        chestInv.removeItem(item);
+                        ItemStack toAdd = item.clone();
+                        java.util.HashMap<Integer, ItemStack> leftovers = virtualBag.addItem(toAdd);
+                        int addedAmount = toAdd.getAmount();
+                        if (!leftovers.isEmpty()) {
+                            addedAmount -= leftovers.get(0).getAmount();
+                        }
+                        if (addedAmount > 0) {
+                            ItemStack toRemove = item.clone();
+                            toRemove.setAmount(addedAmount);
+                            chestInv.removeItem(toRemove);
+                        }
                         break; // Lấy hạt giống
                     }
                 }
@@ -308,7 +348,7 @@ public class NPCFarmer {
                         isMember = core.getOwnerUUID().equals(p.getUniqueId());
                     }
                     if (isMember) {
-                        p.sendMessage(ChatColor.GREEN + "[Logistics] Nông dân đã cất thực phẩm thu hoạch được vào Kho Thực Phẩm Lõi thành công!");
+                        p.sendActionBar(ChatColor.GREEN + "[Logistics] Nông dân đã cất thực phẩm thu hoạch được vào Kho Thực Phẩm Lõi thành công!");
                     }
                 });
             }

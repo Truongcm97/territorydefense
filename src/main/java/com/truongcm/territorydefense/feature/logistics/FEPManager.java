@@ -36,6 +36,9 @@ public class FEPManager implements Listener {
     // Lưu trữ trạng thái cảnh báo Shutdown để tránh spam tin nhắn
     private final Map<UUID, Boolean> coreShutdownAlerted = new HashMap<>();
 
+    // Bộ đếm tick cho việc tự động lưu định kỳ dữ liệu Lõi
+    private int tickCounter = 0;
+
     public FEPManager(TerritoryDefense plugin) {
         this.plugin = plugin;
         setupFoodValues();
@@ -151,6 +154,7 @@ public class FEPManager implements Listener {
                 if (core.getShield() > 0.0) {
                     core.setShield(0.0); // Giáp ảo lập tức vỡ vụn
                     triggerShutdownAlert(core);
+                    plugin.getCoreManager().registerCore(core.getLocation(), core); // Lưu ngay trạng thái sập nguồn
                 }
                 continue; // Không FEP -> Không sạc giáp, tháp ngắt điện
             }
@@ -180,6 +184,13 @@ public class FEPManager implements Listener {
             
             // Cập nhật Hologram hiển thị năng lượng FEP động thời gian thực
             com.truongcm.territorydefense.feature.core.HologramManager.updateCoreHologram(core);
+        }
+
+        // Tự động lưu định kỳ toàn bộ dữ liệu Lõi mỗi 60 giây (tương đương 60 ticks của tác vụ này)
+        tickCounter++;
+        if (tickCounter >= 60) {
+            tickCounter = 0;
+            plugin.getCoreManager().saveAllCores();
         }
     }
 

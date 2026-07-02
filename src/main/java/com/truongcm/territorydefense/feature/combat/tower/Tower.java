@@ -54,7 +54,7 @@ public abstract class Tower {
     public abstract void performAttack(LivingEntity target, TerritoryCore core);
 
     public double getFepCost() {
-        return 5.0; // Mức tiêu hao mặc định toàn cục mới (tăng từ 2.0 lên 5.0)
+        return TerritoryDefense.getInstance().getConfig().getDouble("tower-settings.fep-cost-default", 5.0);
     }
 
     /**
@@ -140,13 +140,21 @@ public abstract class Tower {
 
     public double getFinalDamage(LivingEntity target) {
         double baseDamage = getDamage();
-        
-        // Áp dụng buff hợp nhất lãnh thổ (Ally land merge boost +5% damage per merged core)
+        org.bukkit.configuration.file.FileConfiguration cfg = TerritoryDefense.getInstance().getConfig();
+
+        // Áp dụng buff hợp nhất lãnh thổ (Ally land merge boost) — đọc từ config
         if (ownerCoreId != null && TerritoryDefense.getInstance().getCoreManager() != null) {
             TerritoryCore core = TerritoryDefense.getInstance().getCoreManager().getCoreById(ownerCoreId);
             if (core != null && core.isMerged() && core.getMergeCount() > 0) {
-                baseDamage *= (1.0 + 0.05 * core.getMergeCount());
+                double boostPerCore = cfg.getDouble("tower-settings.merge-damage-boost-per-core", 0.05);
+                baseDamage *= (1.0 + boostPerCore * core.getMergeCount());
             }
+        }
+
+        // Nếu mục tiêu là người chơi công thành, giảm sát thương theo config (PvP balance)
+        if (target instanceof org.bukkit.entity.Player) {
+            double reduction = cfg.getDouble("tower-settings.player-damage-reduction", 0.10);
+            baseDamage *= reduction;
         }
 
         return baseDamage;

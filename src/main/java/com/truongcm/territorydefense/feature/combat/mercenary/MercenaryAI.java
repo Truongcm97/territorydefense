@@ -33,7 +33,42 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MercenaryAI extends BukkitRunnable implements Listener {
 
     public boolean spawnMercenary(Player player, TerritoryCore core) {
-        return true;}
+        return true;
+    }
+
+    public boolean spawnDefender(Player player, TerritoryCore core, String type) {
+        try {
+            MercenaryType mercType = MercenaryType.valueOf(type.toUpperCase());
+            return spawnMercenary(core, mercType, "DEFEND");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public boolean spawnDefender(Player player, TerritoryCore core, MercenaryType type) {
+        return spawnMercenary(core, type, "DEFEND");
+    }
+
+    public boolean spawnDefender(Player player, TerritoryCore core) {
+        return spawnMercenary(core, MercenaryType.MELEE, "DEFEND");
+    }
+
+    public int getActiveMercenariesCount(TerritoryCore core) {
+        int count = 0;
+        UUID coreOwner = core.getOwnerUUID();
+        for (ActiveMercenary merc : activeMercenaries.values()) {
+            Mob mob = merc.getEntity();
+            if (mob != null && mob.isValid() && !mob.isDead()) {
+                if (mob.hasMetadata("td_owner_uuid")) {
+                    String ownerStr = mob.getMetadata("td_owner_uuid").get(0).asString();
+                    if (ownerStr.equals(coreOwner.toString())) {
+                        count++;
+                    }
+                }
+            }
+        }
+        return count;
+    }
 
     public enum MercenaryType {
         MELEE,      // Lính Cận Chiến (Iron Golem)
@@ -269,6 +304,23 @@ public class MercenaryAI extends BukkitRunnable implements Listener {
                     }
                 }
             }
+            // 3. Quét tìm lính đánh thuê đối địch (khác liên minh và khác chủ sở hữu)
+            else if (e.hasMetadata("td_mercenary")) {
+                String tAlly = e.getMetadata("td_ally_id").get(0).asString();
+                String myOwner = mob.hasMetadata("td_owner_uuid") ? mob.getMetadata("td_owner_uuid").get(0).asString() : "";
+                String tOwner = e.hasMetadata("td_owner_uuid") ? e.getMetadata("td_owner_uuid").get(0).asString() : "";
+
+                boolean isDifferentAlly = myAllyId != null && !myAllyId.equals(tAlly);
+                boolean isDifferentOwner = !myOwner.isEmpty() && !myOwner.equals(tOwner);
+
+                if (isDifferentAlly && isDifferentOwner) {
+                    double dist = mob.getLocation().distance(e.getLocation());
+                    if (dist < closest) {
+                        closest = dist;
+                        best = living;
+                    }
+                }
+            }
         }
         return best;
     }
@@ -350,11 +402,62 @@ public class MercenaryAI extends BukkitRunnable implements Listener {
         else if (target.hasMetadata("td_farmer")) {
             event.setCancelled(true);
         }
-        // 3. Chặn target lính đồng minh
+        // 3. Chặn target lính đồng minh hoặc cùng chủ sở hữu
         else if (target.hasMetadata("td_mercenary")) {
             String tAlly = target.getMetadata("td_ally_id").get(0).asString();
-            if (myAllyId.equals(tAlly)) {
+            String myOwner = "";
+            if (mob.hasMetadata("td_owner_uuid")) {
+                myOwner = mob.getMetadata("td_owner_uuid").get(0).asString();
+            }
+            String tOwner = "";
+            if (target.hasMetadata("td_owner_uuid")) {
+                tOwner = target.getMetadata("td_owner_uuid").get(0).asString();
+            }
+
+            if ((myAllyId != null && !myAllyId.isEmpty() && myAllyId.equals(tAlly)) || (!myOwner.isEmpty() && myOwner.equals(tOwner))) {
                 event.setCancelled(true);
+            }
+        }
+    }
+
+    /**
+     * CHẶN GÂY SÁT THƯƠNG ĐỒNG MINH (FRIENDLY FIRE BLOCK):
+     * Ngăn chặn lính đánh thuê gây sát thương lên người chơi đồng đội, Farmer phe mình và lính đánh thuê phe mình.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onMercenaryDamageValidation(EntityDamageByEntityEvent event) {
+        Entity damager = event.getDamager();
+        Entity target = event.getEntity();
+        
+        if (damager.hasMetadata("td_mercenary")) {
+            String myAllyId = damager.getMetadata("td_ally_id").get(0).asString();
+            String myOwner = "";
+            if (damager.hasMetadata("td_owner_uuid")) {
+                myOwner = damager.getMetadata("td_owner_uuid").get(0).asString();
+            }
+
+            // Chặn gây sát thương cho người chơi đồng đội
+            if (target instanceof Player player) {
+                String pAlly = plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId());
+                if (myAllyId.equals(pAlly)) {
+                    event.setCancelled(true);
+                }
+            }
+            // Chặn gây sát thương cho NPC Farmer phe mình
+            else if (target.hasMetadata("td_farmer")) {
+                event.setCancelled(true);
+            }
+            // Chặn gây sát thương cho lính đánh thuê đồng đội / cùng chủ sở hữu
+            else if (target.hasMetadata("td_mercenary")) {
+                String tAlly = target.getMetadata("td_ally_id").get(0).asString();
+                String tOwner = "";
+                if (target.hasMetadata("td_owner_uuid")) {
+                    tOwner = target.getMetadata("td_owner_uuid").get(0).asString();
+                }
+
+                if ((myAllyId != null && !myAllyId.isEmpty() && myAllyId.equals(tAlly)) || (!myOwner.isEmpty() && myOwner.equals(tOwner))) {
+                    event.setCancelled(true);
+                }
             }
         }
     }

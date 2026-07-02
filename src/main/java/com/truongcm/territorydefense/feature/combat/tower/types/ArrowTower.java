@@ -6,6 +6,7 @@ import com.truongcm.territorydefense.feature.core.TerritoryCore;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Sound;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Arrow;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -13,6 +14,7 @@ import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.util.Vector;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -23,35 +25,37 @@ import java.util.UUID;
  */
 public class ArrowTower extends Tower {
 
+    private static final String CFG = "tower-settings.types.arrow";
+
     public ArrowTower(UUID towerId, Location location, UUID ownerCoreId, int level) {
         super(towerId, location, ownerCoreId, TowerType.ARROW, level);
     }
 
     @Override
     public String getDisplayName() {
-        return ChatColor.YELLOW + "Tháp Cung (Skeleton)";
+        return TerritoryDefense.getInstance().getConfig().getString(CFG + ".display-name", "&eTháp Cung (Skeleton)");
     }
 
     @Override
     public double getScanningRadius() {
-        return 16.0;
+        return TerritoryDefense.getInstance().getConfig().getDouble(CFG + ".scanning-radius", 16.0);
     }
 
     @Override
     public int getAttackSpeedTicks() {
-        return 40; // Giãn cách bắn 2.0 giây (40 ticks)
+        return TerritoryDefense.getInstance().getConfig().getInt(CFG + ".attack-speed-ticks", 20);
     }
 
     @Override
     public double getDamage() {
-        // Tịnh tiến sát thương: 15 -> 22 -> 33 -> 45 -> 60 DMG theo cấp độ
+        FileConfiguration cfg = TerritoryDefense.getInstance().getConfig();
+        List<Double> damageList = cfg.getDoubleList(CFG + ".damage");
+        if (damageList != null && level >= 1 && level <= damageList.size()) {
+            return damageList.get(level - 1);
+        }
         return switch (level) {
-            case 1 -> 5.0;
-            case 2 -> 7.0;
-            case 3 -> 9.0;
-            case 4 -> 12.0;
-            case 5 -> 15.0;
-            default -> 5.0;
+            case 2 -> 26.0; case 3 -> 39.0; case 4 -> 54.0; case 5 -> 72.0;
+            default -> 18.0;
         };
     }
 
@@ -61,16 +65,21 @@ public class ArrowTower extends Tower {
      */
     @Override
     public void performAttack(LivingEntity target, TerritoryCore core) {
+        FileConfiguration cfg = TerritoryDefense.getInstance().getConfig();
+        double arrowSpeed = cfg.getDouble(CFG + ".special.arrow-speed", 2.5);
+        double pierceHitbox = cfg.getDouble(CFG + ".special.pierce-hitbox", 1.4);
+        int maxPierce = cfg.getInt(CFG + ".special.pierce-targets", 3);
+        double scanRadius = getScanningRadius();
+
         Location origin = getLocation().clone().add(0.5, 1.25, 0.5);
         double finalDamage = getFinalDamage(target);
 
-        // Tính toán Vector hướng bắn từ tâm tháp tới vị trí quái vật mục tiêu
         Vector direction = target.getEyeLocation().toVector().subtract(origin.toVector()).normalize();
 
         // 1. Triệu hồi thực thể mũi tên vật lý bay đi
         Arrow arrow = origin.getWorld().spawn(origin, Arrow.class);
-        arrow.setVelocity(direction.multiply(2.5)); // Đẩy vận tốc mũi tên bay nhanh mượt
-        arrow.setDamage(finalDamage / 4.0); // Cân đối tỉ lệ lực bắn mặc định của Minecraft
+        arrow.setVelocity(direction.multiply(arrowSpeed));
+        arrow.setDamage(finalDamage / 4.0);
         arrow.setMetadata("td_tower_projectile", new FixedMetadataValue(TerritoryDefense.getInstance(), true));
         if (core != null && core.getOwnerUUID() != null) {
             arrow.setMetadata("td_tower_owner_uuid", new FixedMetadataValue(TerritoryDefense.getInstance(), core.getOwnerUUID().toString()));
@@ -78,12 +87,11 @@ public class ArrowTower extends Tower {
 
         origin.getWorld().playSound(origin, Sound.ENTITY_SKELETON_SHOOT, 1.0f, 1.2f);
 
-        // 2. THUẬT TOÁN XUYÊN THẤU (Pierce Ray-Cast Algorithm):
-        // Quét tất cả kẻ địch nằm dọc trên trục tia bắn trong tầm 16 blocks và gây sát thương đồng loạt.
+        // 2. THUẬT TOÁN XUYÊN THẤU (Pierce Ray-Cast Algorithm)
         int pierceCount = 0;
-        Collection<Entity> potentialTargets = origin.getWorld().getNearbyEntities(origin, 16.0, 16.0, 16.0);
+        Collection<Entity> potentialTargets = origin.getWorld().getNearbyEntities(origin, scanRadius, scanRadius, scanRadius);
         for (Entity entity : potentialTargets) {
-            if (pierceCount >= 3) break; // Giới hạn xuyên tối đa 3 mục tiêu theo GDD
+            if (pierceCount >= maxPierce) break;
             if (!(entity instanceof LivingEntity living)) continue;
 
             boolean isRaidMob = living.hasMetadata("td_raid_mob") || (com.truongcm.territorydefense.feature.core.PDCKeys.RAID_MOB_TAG != null && living.getPersistentDataContainer().has(com.truongcm.territorydefense.feature.core.PDCKeys.RAID_MOB_TAG, org.bukkit.persistence.PersistentDataType.BYTE));
@@ -91,9 +99,8 @@ public class ArrowTower extends Tower {
                     || (isRaidMob && !living.isDead() && living.isValid());
 
             if (isEnemy) {
-                // Thẩm định khoảng cách vuông góc ngắn nhất từ mục tiêu tới tia bắn
                 double distanceToRay = getDistanceToRay(living.getLocation().toVector(), origin.toVector(), direction);
-                if (distanceToRay <= 1.4) { // Phạm vi hộp va chạm quét tia trúng đích
+                if (distanceToRay <= pierceHitbox) {
                     if (core != null && core.getOwnerUUID() != null) {
                         living.setMetadata("td_last_tower_damager_uuid", new FixedMetadataValue(TerritoryDefense.getInstance(), core.getOwnerUUID().toString()));
                     }

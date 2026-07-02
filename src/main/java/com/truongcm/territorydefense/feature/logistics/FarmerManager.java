@@ -193,6 +193,7 @@ public class FarmerManager extends BukkitRunnable implements Listener {
     public void onFarmerInteract(PlayerInteractEntityEvent event) {
         org.bukkit.entity.Entity entity = event.getRightClicked();
         if (!(entity instanceof org.bukkit.entity.AbstractVillager villager)) return;
+        if (villager.hasMetadata("td_builder")) return;
 
         PersistentDataContainer pdc = villager.getPersistentDataContainer();
         boolean isFarmer = pdc.has(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING)

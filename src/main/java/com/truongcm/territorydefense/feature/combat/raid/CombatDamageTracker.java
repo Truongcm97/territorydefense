@@ -67,6 +67,11 @@ public class CombatDamageTracker implements Listener {
                     String uuidStr = damager.getMetadata("td_tower_owner_uuid").get(0).asString();
                     player = Bukkit.getPlayer(UUID.fromString(uuidStr));
                 } catch (Exception ignored) {}
+            } else if (damager.hasMetadata("td_owner_uuid") && damager.hasMetadata("td_mercenary")) {
+                try {
+                    String uuidStr = damager.getMetadata("td_owner_uuid").get(0).asString();
+                    player = Bukkit.getPlayer(UUID.fromString(uuidStr));
+                } catch (Exception ignored) {}
             }
         }
 
@@ -102,6 +107,33 @@ public class CombatDamageTracker implements Listener {
                 breakdowns.put(pId, currentDamage + damageToAdd);
             }
         }
+
+        // Đồng bộ hiển thị máu ảo thời gian thực ngay khi quái dính đòn
+        if (event.getEntity() instanceof org.bukkit.entity.LivingEntity mob) {
+            // Chạy sau 1 tick để Bukkit kịp trừ máu xong
+            Bukkit.getScheduler().runTaskLater(com.truongcm.territorydefense.TerritoryDefense.getInstance(), () -> {
+                if (mob.isValid()) {
+                    updateMobCustomName(mob);
+                }
+            }, 1L);
+        }
+    }
+
+    private void updateMobCustomName(org.bukkit.entity.LivingEntity mob) {
+        try {
+            double maxHp = mob.getMaxHealth();
+            double currentHp = mob.getHealth();
+            if (mob.hasMetadata("td_intended_max_hp") && mob.hasMetadata("td_actual_max_hp")) {
+                double intended = mob.getMetadata("td_intended_max_hp").get(0).asDouble();
+                double actual = mob.getMetadata("td_actual_max_hp").get(0).asDouble();
+                if (actual > 0) {
+                    maxHp = intended;
+                    currentHp = mob.getHealth() * (intended / actual);
+                }
+            }
+            mob.setCustomName(org.bukkit.ChatColor.RED + "Quái Công Thành [HP: " + String.format("%.0f", Math.max(0.0, currentHp)) + "/" + String.format("%.0f", maxHp) + "]");
+            mob.setCustomNameVisible(true);
+        } catch (Throwable ignored) {}
     }
 
     /**
@@ -165,42 +197,114 @@ public class CombatDamageTracker implements Listener {
                 }
 
                 // 3. Tính toán tỉ lệ và số lượng rơi Shard theo quy định mới
+                boolean isMiniBoss = event.getEntity().hasMetadata("td_elite_boss");
                 boolean isGiant = (event.getEntity().getType() == org.bukkit.entity.EntityType.GIANT);
-                double dropRate = isGiant ? 0.60 : 0.20;
-                int shardAmount = isGiant ? 4 : 1;
+                
+                double dropRate = isGiant ? 0.60 : (isMiniBoss ? 0.45 : 0.20);
+                int shardAmount = isGiant ? 4 : (isMiniBoss ? 2 : 1);
                 
                 // Cộng thêm Shard thưởng cố định từ lượt raid hoàn thành cao
                 shardAmount += bonusShards;
                 
                 boolean shardDropped = Math.random() < dropRate;
 
+                // Lấy chiến dịch Raid đang diễn ra để tích lũy
+                com.truongcm.territorydefense.feature.combat.raid.RaidSession.ActiveRaidCampaign campaign = 
+                    (nearestCore != null) ? plugin.getRaidSession().getActiveRaid(nearestCore) : null;
+
                 if (shardDropped) {
                     ItemStack secureShard = com.truongcm.territorydefense.feature.core.ui.CoreGui.createSecureShard(shardAmount);
                     player.getInventory().addItem(secureShard);
+                    if (campaign != null) {
+                        campaign.addWaveDirectShards(player.getUniqueId(), shardAmount);
+                    }
+                }
+
+                // Cơ chế mới: Tiêu diệt Mini-boss nhận 100% trang bị ngẫu nhiên (Đá - Netherite) từ 1-15 dòng phù phép ngẫu nhiên
+                if (isMiniBoss) {
+                    Material[] possibleMaterials = {
+                        // Đá & Xích
+                        Material.STONE_SWORD, Material.STONE_AXE, Material.STONE_PICKAXE, Material.STONE_SHOVEL, Material.STONE_HOE,
+                        Material.CHAINMAIL_HELMET, Material.CHAINMAIL_CHESTPLATE, Material.CHAINMAIL_LEGGINGS, Material.CHAINMAIL_BOOTS,
+                        // Sắt
+                        Material.IRON_HELMET, Material.IRON_CHESTPLATE, Material.IRON_LEGGINGS, Material.IRON_BOOTS,
+                        Material.IRON_SWORD, Material.IRON_AXE, Material.IRON_PICKAXE, Material.IRON_SHOVEL, Material.IRON_HOE,
+                        // Vàng
+                        Material.GOLDEN_HELMET, Material.GOLDEN_CHESTPLATE, Material.GOLDEN_LEGGINGS, Material.GOLDEN_BOOTS,
+                        Material.GOLDEN_SWORD, Material.GOLDEN_AXE, Material.GOLDEN_PICKAXE, Material.GOLDEN_SHOVEL, Material.GOLDEN_HOE,
+                        // Kim Cương
+                        Material.DIAMOND_HELMET, Material.DIAMOND_CHESTPLATE, Material.DIAMOND_LEGGINGS, Material.DIAMOND_BOOTS,
+                        Material.DIAMOND_SWORD, Material.DIAMOND_AXE, Material.DIAMOND_PICKAXE, Material.DIAMOND_SHOVEL, Material.DIAMOND_HOE,
+                        // Netherite
+                        Material.NETHERITE_HELMET, Material.NETHERITE_CHESTPLATE, Material.NETHERITE_LEGGINGS, Material.NETHERITE_BOOTS,
+                        Material.NETHERITE_SWORD, Material.NETHERITE_AXE, Material.NETHERITE_PICKAXE, Material.NETHERITE_SHOVEL, Material.NETHERITE_HOE
+                    };
+
+                    Material selectedMat = possibleMaterials[(int)(Math.random() * possibleMaterials.length)];
+                    ItemStack bossItem = new ItemStack(selectedMat);
+
+                    // Lặp hiện đại qua Registry để thu thập enchant tránh dùng .values() lỗi thời
+                    java.util.List<org.bukkit.enchantments.Enchantment> allEnchants = new java.util.ArrayList<>();
+                    for (org.bukkit.enchantments.Enchantment ench : org.bukkit.Registry.ENCHANTMENT) {
+                        allEnchants.add(ench);
+                    }
+                    java.util.Collections.shuffle(allEnchants);
+
+                    // Ngẫu nhiên từ 1 đến 15 dòng
+                    int randLines = (int)(Math.random() * 15) + 1;
+                    int count = Math.min(randLines, allEnchants.size());
+                    
+                    for (int i = 0; i < count; i++) {
+                        org.bukkit.enchantments.Enchantment ench = allEnchants.get(i);
+                        int lvl = (int)(Math.random() * Math.max(ench.getMaxLevel(), 5)) + 1;
+                        bossItem.addUnsafeEnchantment(ench, lvl);
+                    }
+
+                    ItemMeta meta = bossItem.getItemMeta();
+                    if (meta != null) {
+                        String tierName = selectedMat.name().split("_")[0]; // Ví dụ: NETHERITE, DIAMOND, STONE
+                        meta.setDisplayName(ChatColor.GOLD + "★ CỔ VẬT MINI-BOSS [" + tierName + "] ★");
+                        bossItem.setItemMeta(meta);
+                    }
+                    
+                    player.getInventory().addItem(bossItem);
+                    player.sendMessage(ChatColor.GOLD + "[Mini-boss] Bạn nhận được: " + ChatColor.YELLOW + bossItem.getItemMeta().getDisplayName() + ChatColor.LIGHT_PURPLE + " với " + ChatColor.GREEN + count + ChatColor.LIGHT_PURPLE + " dòng Phù Phép!");
+                    player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
                 }
 
                 // 4. Trao thưởng tiền xu trực tiếp qua ví Vault Kinh tế
-                double baseCoin = getCoinRewardForType(event.getEntity().getType());
+                double baseCoin = com.truongcm.territorydefense.feature.combat.raid.mobs.RaidMobRegistry.getCoinReward(event.getEntity().getType());
+                double configMultiplier = plugin.getConfig().getDouble("raid-settings.reward-scaling.coin-reward-multiplier", 1.0);
+                coinMultiplier *= configMultiplier;
+
+                if (isMiniBoss) {
+                    coinMultiplier *= 3.0; // Mini-boss nhân 3 tiền thưởng
+                }
                 double finalCoin = baseCoin * coinMultiplier;
                 VaultHook.deposit(player, finalCoin);
 
-                player.sendMessage(ChatColor.GREEN + "[Chiến công] Đạt yêu cầu đóng góp phòng thủ: " +
-                        ChatColor.YELLOW + String.format("%.1f", contributionPercent) + "%");
-                
+                if (campaign != null) {
+                    campaign.addWaveCoinsEarned(player.getUniqueId(), finalCoin);
+                    campaign.incrementWaveMobsContributed(player.getUniqueId());
+                }
+
+                // CHẶN TIN NHẮN CHAT ĐƠN LẺ GÂY SPAM (Tổng hợp ở cuối Wave)
                 if (shardDropped) {
-                    player.sendMessage(ChatColor.GREEN + " Bạn được nhận: " + ChatColor.AQUA + shardAmount +
-                            " Shards" + ChatColor.GREEN + " & " + ChatColor.GOLD + String.format("%.1f", finalCoin) + " Xu.");
-                    player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
+                    player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.4f);
                 } else {
-                    player.sendMessage(ChatColor.YELLOW + " Rất tiếc, bạn không trúng tỉ lệ rơi Shard lần này! Bạn nhận được " +
-                            ChatColor.GOLD + String.format("%.1f", finalCoin) + " Xu.");
-                    player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.0f);
+                    player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.6f, 1.1f);
                 }
             } else {
-                player.sendMessage(ChatColor.RED + "[Cảnh báo] Đóng góp của bạn không đạt ngưỡng tối thiểu " + 
-                        String.format("%.1f", minContribution) + "% để nhận thưởng " +
-                        "(Thực tế đạt: " + String.format("%.1f", contributionPercent) + "%). Hãy chủ động chiến đấu!");
-                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                com.truongcm.territorydefense.feature.core.TerritoryCore nearestCore = null;
+                if (plugin.getCoreManager() != null) {
+                    nearestCore = plugin.getCoreManager().getCoreByLocationRange(event.getEntity().getLocation());
+                }
+                com.truongcm.territorydefense.feature.combat.raid.RaidSession.ActiveRaidCampaign campaign = 
+                    (nearestCore != null) ? plugin.getRaidSession().getActiveRaid(nearestCore) : null;
+                if (campaign != null) {
+                    campaign.incrementWaveMobsMissed(player.getUniqueId());
+                }
+                // CHẶN TIN NHẮN CẢNH BÁO ĐỎ GÂY SPAM
             }
         }
     }
@@ -221,18 +325,5 @@ public class CombatDamageTracker implements Listener {
         if (isRaidMob) {
             event.setCancelled(true);
         }
-    }
-
-    private double getCoinRewardForType(org.bukkit.entity.EntityType type) {
-        return switch (type) {
-            case VINDICATOR -> 200.0;
-            case SKELETON -> 250.0;
-            case PHANTOM -> 400.0;
-            case GHAST -> 700.0;
-            case EVOKER -> 1200.0;
-            case RAVAGER -> 6000.0;
-            case GIANT -> 60000.0;
-            default -> 100.0;
-        };
     }
 }

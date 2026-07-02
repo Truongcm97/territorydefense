@@ -75,6 +75,14 @@ public class HologramManager implements Listener {
      */
     public static void updateCoreHologram(TerritoryCore core) {
         if (core == null || core.getLocation() == null) return;
+        if (!Bukkit.isPrimaryThread()) {
+            TerritoryDefense plugin = TerritoryDefense.getInstance();
+            if (plugin != null && plugin.isEnabled()) {
+                Bukkit.getScheduler().runTask(plugin, () -> updateCoreHologram(core));
+            }
+            return;
+        }
+
         UUID coreId = core.getCoreId();
         Location spawnLoc = core.getLocation().clone().add(0.5, 1.5, 0.5);
         World world = spawnLoc.getWorld();
@@ -98,7 +106,13 @@ public class HologramManager implements Listener {
             sb.append(ChatColor.WHITE).append(ownerName).append("\n");
         }
         sb.append(ChatColor.YELLOW).append("Cấp Lõi: ").append(ChatColor.WHITE).append(core.getLevel()).append("\n");
-        sb.append(ChatColor.AQUA).append("Năng Lượng: ").append(ChatColor.WHITE).append(String.format("%.1f", core.getFep())).append("/").append(core.getMaxFepCapacity()).append(" FEP");
+        sb.append(ChatColor.AQUA).append("Năng Lượng: ").append(ChatColor.WHITE).append(String.format("%.1f", core.getFep())).append("/").append(core.getMaxFepCapacity()).append(" FEP\n");
+        
+        // Hiển thị đồng bộ Lá Chắn (Shield) và Máu Lõi (Temp Health khi đang có Raid)
+        sb.append(ChatColor.GREEN).append("Lá Chắn: ").append(ChatColor.WHITE).append(String.format("%.0f", core.getShield())).append("/").append(String.format("%.0f", core.getMaxShieldCapacity())).append(" HP");
+        if (core.isRaidActive()) {
+            sb.append("\n").append(ChatColor.RED).append("Máu Lõi: ").append(ChatColor.WHITE).append(String.format("%.0f", core.getTempHealth())).append("/").append(String.format("%.0f", core.getMaxShieldCapacity())).append(" HP");
+        }
 
         String text = sb.toString();
 
@@ -133,6 +147,15 @@ public class HologramManager implements Listener {
      * Cập nhật hoặc tạo mới Hologram cho Tháp canh phòng thủ.
      */
     public static void updateTowerHologram(Tower tower) {
+        if (tower == null || tower.getLocation() == null) return;
+        if (!Bukkit.isPrimaryThread()) {
+            TerritoryDefense plugin = TerritoryDefense.getInstance();
+            if (plugin != null && plugin.isEnabled()) {
+                Bukkit.getScheduler().runTask(plugin, () -> updateTowerHologram(tower));
+            }
+            return;
+        }
+
         if (tower == null || tower.getLocation() == null) return;
         UUID towerId = tower.getTowerId();
         Location spawnLoc = tower.getLocation().clone().add(0.5, 2.0, 0.5);
@@ -283,6 +306,53 @@ public class HologramManager implements Listener {
             } else {
                 // Không chứa ID liên kết hợp lệ -> Xóa khỏi thế giới
                 display.remove();
+            }
+        }
+
+        // Tự động kiểm tra và hồi sinh hologram cho Core/Tower trong chunk vừa tải
+        int chunkX = event.getChunk().getX();
+        int chunkZ = event.getChunk().getZ();
+        World world = event.getWorld();
+
+        if (plugin.getCoreManager() != null) {
+            for (TerritoryCore core : plugin.getCoreManager().getAllActiveCores()) {
+                Location loc = core.getLocation();
+                if (loc != null && loc.getWorld() != null && loc.getWorld().equals(world)) {
+                    int cX = loc.getBlockX() >> 4;
+                    int cZ = loc.getBlockZ() >> 4;
+                    if (cX == chunkX && cZ == chunkZ) {
+                        UUID activeUUID = coreHologramMap.get(core.getCoreId());
+                        if (activeUUID == null) {
+                            updateCoreHologram(core);
+                        } else {
+                            Entity existing = Bukkit.getEntity(activeUUID);
+                            if (existing == null || !existing.isValid()) {
+                                updateCoreHologram(core);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (plugin.getTowerManager() != null) {
+            for (Tower tower : plugin.getTowerManager().getActiveTowers().values()) {
+                Location loc = tower.getLocation();
+                if (loc != null && loc.getWorld() != null && loc.getWorld().equals(world)) {
+                    int tX = loc.getBlockX() >> 4;
+                    int tZ = loc.getBlockZ() >> 4;
+                    if (tX == chunkX && tZ == chunkZ) {
+                        UUID activeUUID = towerHologramMap.get(tower.getTowerId());
+                        if (activeUUID == null) {
+                            updateTowerHologram(tower);
+                        } else {
+                            Entity existing = Bukkit.getEntity(activeUUID);
+                            if (existing == null || !existing.isValid()) {
+                                updateTowerHologram(tower);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
