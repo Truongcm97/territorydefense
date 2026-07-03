@@ -516,6 +516,10 @@ public class TowerManager extends BukkitRunnable implements Listener {
 
             Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
                 try {
+                    File parent = tempFile.getParentFile();
+                    if (parent != null && !parent.exists()) {
+                        parent.mkdirs();
+                    }
                     java.nio.file.Files.writeString(tempFile.toPath(), configString, java.nio.charset.StandardCharsets.UTF_8);
                     if (tempFile.exists() && tempFile.length() > 0) {
                         if (finalFile.exists() && finalFile.length() > 0) {
