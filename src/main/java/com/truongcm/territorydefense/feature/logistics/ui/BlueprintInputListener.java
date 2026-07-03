@@ -9,8 +9,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
-
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,6 +37,14 @@ public class BlueprintInputListener implements Listener {
 
     public static void registerRename(UUID uuid, int slot) {
         pendingRenameSlot.put(uuid, slot);
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        UUID uuid = event.getPlayer().getUniqueId();
+        pendingSellSlot.remove(uuid);
+        pendingChangePriceSlot.remove(uuid);
+        pendingRenameSlot.remove(uuid);
     }
 
     @EventHandler(priority = EventPriority.LOWEST)

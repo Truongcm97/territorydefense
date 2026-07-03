@@ -53,6 +53,8 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
     private boolean protocolLibEnabled = false;
 
     // Toàn bộ các phân hệ quản lý độc lập (Modular Managers)
+    private org.bukkit.scheduler.BukkitTask borderTask;
+    private org.bukkit.scheduler.BukkitTask fepTask;
     private CoreManager coreManager;
     private com.truongcm.territorydefense.feature.core.CoreStorage coreStorage;
     private com.truongcm.territorydefense.feature.core.CoreGameplayListener coreGameplayListener;
@@ -74,6 +76,7 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
         instance = this;
 
         com.truongcm.territorydefense.feature.core.PDCKeys.init(this);
+        com.truongcm.territorydefense.base.ui.GUIRouter.init(this);
 
         // Nạp cấu hình config.yml
         saveDefaultConfig();
@@ -124,6 +127,13 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
+        if (this.borderTask != null) {
+            this.borderTask.cancel();
+        }
+        if (this.fepTask != null) {
+            this.fepTask.cancel();
+        }
+
         // Thu hồi NPC Farmer tránh rò rỉ bộ nhớ RAM khi tắt/re-load Server
         if (this.farmerManager != null) {
             this.farmerManager.removeAllActiveNPCs();
@@ -220,10 +230,10 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
      */
     private void startSystemTasks() {
         // Tác vụ hiển thị ranh giới ảo bằng hạt định kỳ (Giảm delay khởi chạy xuống 20 ticks = 1 giây)
-        borderVisualizer.runTaskTimer(this, 20L, 20L);
+        this.borderTask = borderVisualizer.runTaskTimer(this, 20L, 20L);
 
         // Tác vụ đốt FEP để duy trì và sạc lớp giáp ảo (Shield Recharge) mỗi giây (20 Ticks)
-        new BukkitRunnable() {
+        this.fepTask = new BukkitRunnable() {
             @Override
             public void run() {
                 fepManager.processFEPSystemTick();

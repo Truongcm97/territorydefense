@@ -160,11 +160,16 @@ public class AllianceManager implements Listener {
             allianceConfig.set(path + ".members", memberStrings);
         }
 
-        try {
-            allianceConfig.save(allianceFile);
-        } catch (IOException e) {
-            plugin.getLogger().severe("[TD] Lỗi nghiêm trọng không thể ghi dữ liệu Liên Minh vào alliances.yml: " + e.getMessage());
-        }
+        // Serialize to String on the main thread for safety
+        final String configString = allianceConfig.saveToString();
+
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                java.nio.file.Files.writeString(allianceFile.toPath(), configString, java.nio.charset.StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                plugin.getLogger().severe("[TD] Lỗi nghiêm trọng không thể ghi dữ liệu Liên Minh vào alliances.yml: " + e.getMessage());
+            }
+        });
     }
 
     /**

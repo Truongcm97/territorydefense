@@ -93,6 +93,10 @@ public class TowerManager extends BukkitRunnable implements Listener {
                 core.setFep(core.getFep() - tower.getFepCost());
                 tower.performAttack(target, core);
                 tower.setLastShotTime(now);
+            } else {
+                int idleTicks = plugin.getConfig().getInt("tower-settings.idle-scan-throttle-ticks", 20);
+                long idleThrottleMs = idleTicks * 50L;
+                tower.setLastShotTime(now - cooldownMs + Math.min(cooldownMs, idleThrottleMs));
             }
         }
     }
@@ -504,11 +508,34 @@ public class TowerManager extends BukkitRunnable implements Listener {
                 pTowersConfig.set(path + ".level", tower.getLevel());
             }
 
-            try {
-                pTowersConfig.save(pTowersFile);
-            } catch (IOException e) {
-                plugin.getLogger().severe("[TD] Khong the ghi du lieu thap canh vao " + pTowersFile.getAbsolutePath());
-            }
+            // Lưu tháp canh bất đồng bộ an toàn luồng
+            final String configString = pTowersConfig.saveToString();
+            final File finalFile = pTowersFile;
+            final File tempFile = new File(playerDir, "towers.yml.tmp");
+            final File backupFile = new File(playerDir, "towers.yml.bak");
+
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                try {
+                    java.nio.file.Files.writeString(tempFile.toPath(), configString, java.nio.charset.StandardCharsets.UTF_8);
+                    if (tempFile.exists() && tempFile.length() > 0) {
+                        if (finalFile.exists() && finalFile.length() > 0) {
+                            try {
+                                java.nio.file.Files.copy(finalFile.toPath(), backupFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            } catch (IOException ignored) {}
+                        }
+                        try {
+                            java.nio.file.Files.move(tempFile.toPath(), finalFile.toPath(), 
+                                    java.nio.file.StandardCopyOption.REPLACE_EXISTING, 
+                                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                        } catch (IOException e) {
+                            java.nio.file.Files.move(tempFile.toPath(), finalFile.toPath(), 
+                                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        }
+                    }
+                } catch (Exception e) {
+                    plugin.getLogger().severe("[TD] Loi khi luu bat dong bo du lieu thap cho " + ownerUUID + ": " + e.getMessage());
+                }
+            });
         }
     }
 

@@ -168,8 +168,23 @@ public class FEPManager implements Listener {
 
             if (currentShield < maxShield) {
                 double shieldDeficit = maxShield - currentShield;
+                
+                double currentMaxRechargeRate = maxChargeRatePerSec;
+                if (plugin.getSiegeSession() != null) {
+                    boolean penalized = false;
+                    if (core.getAllyId() != null && plugin.getSiegeSession().isRegenPenalized(core.getAllyId())) {
+                        penalized = true;
+                    } else if (core.getOwnerUUID() != null && plugin.getSiegeSession().isRegenPenalized(core.getOwnerUUID().toString())) {
+                        penalized = true;
+                    }
+                    if (penalized) {
+                        double penaltyPercent = plugin.getConfig().getDouble("siege-settings.defender-shield-regen-penalty-percent", 50.0);
+                        currentMaxRechargeRate *= (1.0 - (penaltyPercent / 100.0));
+                    }
+                }
+
                 // Khống chế lượng sạc tối đa mỗi giây theo cấu hình
-                double targetRecharge = Math.min(shieldDeficit, maxChargeRatePerSec);
+                double targetRecharge = Math.min(shieldDeficit, currentMaxRechargeRate);
 
                 // Tính toán lượng FEP cần tiêu thụ để sạc (1 FEP = 10 Shield HP)
                 double fepNeeded = targetRecharge / chargeRatio;
@@ -245,8 +260,8 @@ public class FEPManager implements Listener {
 
         // Kiểm tra dung lượng bình chứa FEP hiện tại
         if (core.getFep() >= core.getMaxFepCapacity()) {
-            player.sendMessage(ChatColor.YELLOW + "Bình chứa năng lượng FEP của Lõi đã đầy!");
-            event.setCancelled(true);
+            player.sendMessage(ChatColor.YELLOW + "Bình chứa năng lượng FEP của Lõi đã đầy! Tự động chuyển hướng mở giao diện quản lý...");
+            // Không hủy sự kiện, cho phép truyền qua CoreProtectionListener để mở GUI trực tiếp
             return;
         }
 

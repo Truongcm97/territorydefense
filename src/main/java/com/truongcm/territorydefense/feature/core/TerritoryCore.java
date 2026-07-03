@@ -437,8 +437,8 @@ public class TerritoryCore {
             this.relX = relX;
             this.relY = relY;
             this.relZ = relZ;
-            this.material = material;
-            this.blockData = blockData;
+            this.material = material != null ? material.intern() : null;
+            this.blockData = blockData != null ? blockData.intern() : null;
         }
     }
 }

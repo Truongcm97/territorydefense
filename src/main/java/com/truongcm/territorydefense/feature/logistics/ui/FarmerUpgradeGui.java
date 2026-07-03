@@ -127,13 +127,7 @@ public class FarmerUpgradeGui extends CustomHolder {
         }
         double moneyCost = plugin.getConfig().getDouble("farmer-settings.levels." + nextLevel + ".upgrade-cost", 0.0);
 
-        int shardCost = switch (nextLevel) {
-            case 2 -> 5;
-            case 3 -> 15;
-            case 4 -> 30;
-            case 5 -> 50;
-            default -> 0;
-        };
+        int shardCost = plugin.getConfig().getInt("farmer-settings.levels." + nextLevel + ".upgrade-cost-shards", 0);
 
         if (moneyCost > 0 && !plugin.getVaultEconomy().has(player, moneyCost)) {
             player.sendMessage(ChatColor.RED + "[Nông nghiệp] Bạn không đủ Xu để nâng cấp Nông dân! Cần: " + String.format("%,.0f", moneyCost) + " Xu.");
@@ -272,13 +266,7 @@ public class FarmerUpgradeGui extends CustomHolder {
 
         double moneyCost = plugin.getConfig().getDouble("farmer-settings.levels." + nextLevel + ".upgrade-cost", 0.0);
 
-        int shardCost = switch (nextLevel) {
-            case 2 -> 5;
-            case 3 -> 15;
-            case 4 -> 30;
-            case 5 -> 50;
-            default -> 0;
-        };
+        int shardCost = plugin.getConfig().getInt("farmer-settings.levels." + nextLevel + ".upgrade-cost-shards", 0);
 
         List<String> lore = new ArrayList<>();
         lore.add(ChatColor.GRAY + "Tiến trình nâng cấp: Cấp " + level + " ➔ " + ChatColor.GREEN + "Cấp " + nextLevel);

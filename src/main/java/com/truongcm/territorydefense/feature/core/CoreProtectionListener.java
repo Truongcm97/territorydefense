@@ -78,10 +78,6 @@ public class CoreProtectionListener implements Listener {
                 item.getItemMeta().getPersistentDataContainer().has(PDCKeys.IS_CORE_ITEM, PersistentDataType.BYTE);
     }
 
-    private boolean isFoodItem(Material material) {
-        return material != null && (material.isEdible() || material == Material.WHEAT || material == Material.PUMPKIN);
-    }
-
     /**
      * Hàm tự động phát hiện loại hạt phù hợp dựa trên phiên bản Minecraft của Server (Cross-Version Safety).
      * Sửa dứt điểm lỗi "Cannot resolve symbol VILLAGER_HAPPY" trên các máy chủ chạy bản 1.20.5 trở lên.
@@ -99,24 +95,6 @@ public class CoreProtectionListener implements Listener {
                 return Particle.HAPPY_VILLAGER;
             }
         }
-    }
-
-    /**
-     * Quy đổi FEP tương ứng cho từng loại nông sản thực phẩm nạp vào Lõi.
-     */
-    private double getFoodFepValue(Material material) {
-        return switch (material) {
-            case WHEAT -> 5.0;
-            case PUMPKIN -> 8.0;
-            case BREAD -> 15.0;
-            case CARROT, POTATO -> 4.0;
-            case BAKED_POTATO -> 10.0;
-            case COOKED_BEEF, COOKED_PORKCHOP -> 25.0;
-            case COOKED_CHICKEN -> 18.0;
-            case APPLE -> 10.0;
-            case GOLDEN_APPLE -> 50.0;
-            default -> 5.0;
-        };
     }
 
     private boolean isRaidActive(TerritoryCore core) {
@@ -151,21 +129,7 @@ public class CoreProtectionListener implements Listener {
     // PHẦN I: BẢO VỆ KHỐI LÕI VẬT LÝ NGOÀI THẾ GIỚI (WORLD CORE PROTECTION)
     // =========================================================================
 
-    /**
-     * BẢO VỆ 1: CHẶN ĐẬP PHÁ VẬT LÝ KHỐI LÕI BẰNG TAY
-     */
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onCoreBreakProtect(BlockBreakEvent event) {
-        Block block = event.getBlock();
-        if (block.getType() != Material.CONDUIT) return;
 
-        TerritoryCore core = plugin.getCoreManager().getCoreAt(block.getLocation());
-        if (core == null) return;
-
-        Player player = event.getPlayer();
-        event.setCancelled(true);
-        sendDenyNotification(player, "Lõi Lãnh Thổ có tính chất Soulbound bền vững và không thể bị phá hủy vật lý! Hãy mở GUI quản lý Lõi để thực hiện thu hồi an toàn.");
-    }
 
     /**
      * BẢO VỆ 2: CHỐNG TƯƠNG TÁC UI TRÁI PHÉP & TỰ ĐỘNG NẠP FEP THỦ CÔNG NGOÀI THẾ GIỚI

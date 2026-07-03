@@ -371,7 +371,7 @@ public class MercenaryAI extends BukkitRunnable implements Listener {
         if (merc != null && merc.getType() == MercenaryType.SIEGE) {
             // Nếu mục tiêu tấn công là Lõi hoặc Tháp canh
             Material targetType = event.getEntity().getLocation().getBlock().getType();
-            if (targetType == Material.BEACON || targetType == Material.DISPENSER || targetType == Material.OBSIDIAN) {
+            if (targetType == Material.CONDUIT || targetType == Material.DISPENSER || targetType == Material.OBSIDIAN) {
                 // x3 Sát thương phá cấu trúc theo GDD
                 event.setDamage(event.getDamage() * 3.0);
                 event.getEntity().getWorld().playSound(event.getEntity().getLocation(), Sound.ENTITY_ZOMBIE_BREAK_WOODEN_DOOR, 1.0f, 0.5f);

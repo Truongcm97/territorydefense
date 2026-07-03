@@ -199,8 +199,11 @@ public class CoreGui extends CustomHolder {
         }
         inv.setItem(13, shieldInfo);
 
+        double buyRaidCost = plugin.getConfig().getDouble("raid-settings.purchase-costs.1", 100000.0);
+        String buyRaidCostStr = String.format("%,.0f", buyRaidCost);
+
         inv.setItem(11, createGuiItem(Material.REDSTONE_TORCH, ChatColor.RED + "" + ChatColor.BOLD + "Kích Hoạt Raid Chủ Động", "BUY_RAID",
-                ChatColor.GRAY + "Chi phí kích hoạt: " + ChatColor.GOLD + "100,000 Xu",
+                ChatColor.GRAY + "Chi phí kích hoạt: " + ChatColor.GOLD + buyRaidCostStr + " Xu",
                 ChatColor.GRAY + "Triệu hồi cổng không gian quái Raid xâm lược.",
                 ChatColor.AQUA + "Mục đích: Farm quái lấy Shards nâng cấp Lõi cực nhanh!",
                 ChatColor.RED + "Lưu ý: Không thể mua khi Khiên Hòa Bình đang kích hoạt!"
@@ -209,10 +212,14 @@ public class CoreGui extends CustomHolder {
         long currentPeaceRemaining = Math.max(0L, plugin.getCoreManager().getPeaceUntil(core.getCoreId()) - System.currentTimeMillis());
         long remainingMins = currentPeaceRemaining / (60 * 1000L);
 
-        inv.setItem(15, createGuiItem(Material.CLOCK, ChatColor.GREEN + "" + ChatColor.BOLD + "Bỏ Qua Raid & Khiên 2 Giờ", "SKIP_RAID_PROTECT",
-                ChatColor.GRAY + "Chi phí cứu viện: " + ChatColor.GOLD + "250,000 Xu",
+        double skipDurationHours = plugin.getConfig().getDouble("raid-settings.skip-shield-duration-hours", 2.0);
+        double skipCost = plugin.getConfig().getDouble("raid-settings.skip-costs.1", 250000.0);
+        String skipCostStr = String.format("%,.0f", skipCost);
+
+        inv.setItem(15, createGuiItem(Material.CLOCK, ChatColor.GREEN + "" + ChatColor.BOLD + "Bỏ Qua Raid & Khiên " + String.format("%.1f", skipDurationHours) + " Giờ", "SKIP_RAID_PROTECT",
+                ChatColor.GRAY + "Chi phí cứu viện: " + ChatColor.GOLD + skipCostStr + " Xu",
                 ChatColor.GRAY + "Tiêu biến toàn bộ quái Raid hiện tại lập tức,",
-                ChatColor.GRAY + "đồng thời kích hoạt Khiên Hòa Bình bảo vệ trong 2 giờ.",
+                ChatColor.GRAY + "đồng thời kích hoạt Khiên Hòa Bình bảo vệ trong " + String.format("%.1f", skipDurationHours) + " giờ.",
                 ChatColor.YELLOW + "Khiên hiện tại còn: " + ChatColor.AQUA + remainingMins + " phút",
                 ChatColor.RED + "Yêu cầu: Chỉ chủ Lõi mới có quyền mua gói cứu viện!"
         ));
@@ -222,74 +229,115 @@ public class CoreGui extends CustomHolder {
                 ChatColor.GRAY + "nâng cấp hoặc định vị tọa độ tháp."
         ));
 
-        inv.setItem(19, createGuiItem(Material.IRON_SWORD, ChatColor.RED + "Chiêu Mộ Lính Cận Chiến (Melee)", "HIRE_MERCENARY_MELEE",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "50,000 Xu",
+        double costMelee = plugin.getConfig().getDouble("mercenary-settings.types.melee.hire-cost", 50000.0);
+        String nameMelee = ChatColor.translateAlternateColorCodes('&', plugin.getConfig().getString("mercenary-settings.types.melee.display-name", "&6Lính Cận Chiến (Iron Golem)"));
+
+        double costArcher = plugin.getConfig().getDouble("mercenary-settings.types.archer.hire-cost", 45000.0);
+        String nameArcher = ChatColor.translateAlternateColorCodes('&', plugin.getConfig().getString("mercenary-settings.types.archer.display-name", "&aLính Cung Thủ (Skeleton)"));
+
+        double costSiege = plugin.getConfig().getDouble("mercenary-settings.types.siege.hire-cost", 120000.0);
+        String nameSiege = ChatColor.translateAlternateColorCodes('&', plugin.getConfig().getString("mercenary-settings.types.siege.display-name", "&cKỵ Binh Phá Thành (Ravager)"));
+
+        double costSupport = plugin.getConfig().getDouble("mercenary-settings.types.support.hire-cost", 60000.0);
+        String nameSupport = ChatColor.translateAlternateColorCodes('&', plugin.getConfig().getString("mercenary-settings.types.support.display-name", "&bLính Hỗ Trợ (Allay)"));
+
+        inv.setItem(19, createGuiItem(Material.IRON_SWORD, nameMelee, "HIRE_MERCENARY_MELEE",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + String.format("%,.0f", costMelee) + " Xu",
                 ChatColor.GRAY + "Lính cận chiến hỗ trợ cản đường và tấn công xáp lá cà.",
                 ChatColor.YELLOW + "Yêu cầu: Chỉ chủ Lõi mới có quyền chiêu mộ!"
         ));
 
-        inv.setItem(21, createGuiItem(Material.BOW, ChatColor.YELLOW + "Chiêu Mộ Lính Cung Thủ (Archer)", "HIRE_MERCENARY_ARCHER",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "75,000 Xu",
+        inv.setItem(21, createGuiItem(Material.BOW, nameArcher, "HIRE_MERCENARY_ARCHER",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + String.format("%,.0f", costArcher) + " Xu",
                 ChatColor.GRAY + "Lính tầm xa bắn hạ mục tiêu liên tục từ khoảng cách an toàn.",
                 ChatColor.YELLOW + "Yêu cầu: Chỉ chủ Lõi mới có quyền chiêu mộ!"
         ));
 
-        inv.setItem(23, createGuiItem(Material.IRON_GOLEM_SPAWN_EGG, ChatColor.GOLD + "Chiêu Mộ Lính Công Thành (Siege)", "HIRE_MERCENARY_SIEGE",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "90,000 Xu",
+        inv.setItem(23, createGuiItem(Material.IRON_GOLEM_SPAWN_EGG, nameSiege, "HIRE_MERCENARY_SIEGE",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + String.format("%,.0f", costSiege) + " Xu",
                 ChatColor.GRAY + "Lượng máu cực lớn, chống chịu sát thương bảo vệ tháp canh.",
                 ChatColor.YELLOW + "Yêu cầu: Chỉ chủ Lõi mới có quyền chiêu mộ!"
         ));
 
-        inv.setItem(25, createGuiItem(Material.GOLDEN_APPLE, ChatColor.LIGHT_PURPLE + "Chiêu Mộ Lính Hỗ Trợ (Support)", "HIRE_MERCENARY_SUPPORT",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "120,000 Xu",
+        inv.setItem(25, createGuiItem(Material.GOLDEN_APPLE, nameSupport, "HIRE_MERCENARY_SUPPORT",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + String.format("%,.0f", costSupport) + " Xu",
                 ChatColor.GRAY + "Gia tăng chỉ số phòng thủ và hồi phục liên tục cho đồng đội.",
                 ChatColor.YELLOW + "Yêu cầu: Chỉ chủ Lõi mới có quyền chiêu mộ!"
         ));
 
-        inv.setItem(28, createGuiItem(Material.SKELETON_SKULL, ChatColor.YELLOW + "Tháp Cung (Skeleton)", "TOWER_ARROW",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "30,000 Xu",
-                ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "16.0 blocks",
+        double costArrow = getTowerCost(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType.ARROW);
+        String nameArrow = getTowerDisplayName(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType.ARROW);
+        double rArrow = plugin.getConfig().getDouble("tower-settings.types.arrow.scanning-radius", 16.0);
+
+        double costLightning = getTowerCost(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType.LIGHTNING);
+        String nameLightning = getTowerDisplayName(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType.LIGHTNING);
+        double rLightning = plugin.getConfig().getDouble("tower-settings.types.lightning.scanning-radius", 12.0);
+
+        double costFire = getTowerCost(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType.FIRE);
+        String nameFire = getTowerDisplayName(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType.FIRE);
+        double rFire = plugin.getConfig().getDouble("tower-settings.types.fire.scanning-radius", 10.0);
+
+        double costFrost = getTowerCost(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType.FROST);
+        String nameFrost = getTowerDisplayName(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType.FROST);
+        double rFrost = plugin.getConfig().getDouble("tower-settings.types.frost.scanning-radius", 14.0);
+
+        double costArtillery = getTowerCost(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType.ARTILLERY);
+        String nameArtillery = getTowerDisplayName(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType.ARTILLERY);
+        double rArtillery = plugin.getConfig().getDouble("tower-settings.types.artillery.scanning-radius", 18.0);
+
+        double costHealing = getTowerCost(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType.HEALING);
+        String nameHealing = getTowerDisplayName(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType.HEALING);
+        double rHealing = plugin.getConfig().getDouble("tower-settings.types.healing.scanning-radius", 8.0);
+
+        double costSpell = getTowerCost(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType.SPELL);
+        String nameSpell = getTowerDisplayName(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType.SPELL);
+        double rSpell = plugin.getConfig().getDouble("tower-settings.types.spell.scanning-radius", 12.0);
+
+        inv.setItem(28, createGuiItem(Material.SKELETON_SKULL, nameArrow, "TOWER_ARROW",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + String.format("%,.0f", costArrow) + " Xu",
+                ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + String.format("%.1f", rArrow) + " blocks",
                 ChatColor.GRAY + "Đặc tính: Bắn mũi tên xuyên thấu tối đa 3 kẻ địch."
         ));
 
-        inv.setItem(29, createGuiItem(Material.CREEPER_HEAD, ChatColor.GOLD + "Tháp Sét (Creeper)", "TOWER_LIGHTNING",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "45,000 Xu",
-                ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "12.0 blocks",
+        inv.setItem(29, createGuiItem(Material.CREEPER_HEAD, nameLightning, "TOWER_LIGHTNING",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + String.format("%,.0f", costLightning) + " Xu",
+                ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + String.format("%.1f", rLightning) + " blocks",
                 ChatColor.GRAY + "Đặc tính: Triệu hồi sấm sét giật diện rộng lan tỏa."
         ));
 
-        inv.setItem(30, createGuiItem(Material.WITHER_SKELETON_SKULL, ChatColor.RED + "Tháp Hỏa (Blaze)", "TOWER_FIRE",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "50,000 Xu",
-                ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "10.0 blocks",
+        inv.setItem(30, createGuiItem(Material.WITHER_SKELETON_SKULL, nameFire, "TOWER_FIRE",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + String.format("%,.0f", costFire) + " Xu",
+                ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + String.format("%.1f", rFire) + " blocks",
                 ChatColor.GRAY + "Đặc tính: Bắn hỏa cầu thiêu đốt gây sát thương liên tục."
         ));
 
-        inv.setItem(31, createGuiItem(Material.ZOMBIE_HEAD, ChatColor.AQUA + "Tháp Băng (Stray)", "TOWER_FROST",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "40,000 Xu",
-                ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "14.0 blocks",
+        inv.setItem(31, createGuiItem(Material.ZOMBIE_HEAD, nameFrost, "TOWER_FROST",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + String.format("%,.0f", costFrost) + " Xu",
+                ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + String.format("%.1f", rFrost) + " blocks",
                 ChatColor.GRAY + "Đặc tính: Gây sát thương và làm chậm mục tiêu 50% tốc độ."
         ));
 
-        inv.setItem(32, createGuiItem(Material.DRAGON_HEAD, ChatColor.DARK_PURPLE + "Tháp Pháo (Ghast)", "TOWER_ARTILLERY",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "65,000 Xu",
-                ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "18.0 blocks",
+        inv.setItem(32, createGuiItem(Material.DRAGON_HEAD, nameArtillery, "TOWER_ARTILLERY",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + String.format("%,.0f", costArtillery) + " Xu",
+                ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + String.format("%.1f", rArtillery) + " blocks",
                 ChatColor.GRAY + "Đặc tính: Bắn pháo nổ gây sát thương diện rộng (AoE)."
         ));
 
-        inv.setItem(33, createGuiItem(Material.PIGLIN_HEAD, ChatColor.GREEN + "Tháp Hồi Phục (Evoker)", "TOWER_HEALING",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "55,000 Xu",
-                ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "8.0 blocks",
+        inv.setItem(33, createGuiItem(Material.PIGLIN_HEAD, nameHealing, "TOWER_HEALING",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + String.format("%,.0f", costHealing) + " Xu",
+                ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + String.format("%.1f", rHealing) + " blocks",
                 ChatColor.GRAY + "Đặc tính: Hồi phục sinh lực liên tục cho đồng minh lân cận."
         ));
 
-        inv.setItem(34, createGuiItem(Material.PLAYER_HEAD, ChatColor.LIGHT_PURPLE + "Tháp Ma Pháp (Witch)", "TOWER_SPELL",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "70,000 Xu",
-                ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + "12.0 blocks",
+        inv.setItem(34, createGuiItem(Material.PLAYER_HEAD, nameSpell, "TOWER_SPELL",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + String.format("%,.0f", costSpell) + " Xu",
+                ChatColor.GRAY + "Tầm bắn: " + ChatColor.GREEN + String.format("%.1f", rSpell) + " blocks",
                 ChatColor.GRAY + "Đặc tính: Tăng cường sát thương cho toàn bộ tháp lân cận."
         ));
 
+        double siegeFlagCost = plugin.getConfig().getDouble("siege-settings.siege-flag-cost", 20000.0);
         inv.setItem(40, createGuiItem(Material.WHITE_BANNER, ChatColor.GOLD + "" + ChatColor.BOLD + "Mua Cờ Công Thành (Siege Flag)", "BUY_SIEGE_FLAG",
-                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + "20,000 Xu",
+                ChatColor.GRAY + "Chi phí: " + ChatColor.GOLD + String.format("%,.0f", siegeFlagCost) + " Xu",
                 ChatColor.GRAY + "Bắt buộc cầm ở tay trái (Off-hand) khi công thành",
                 ChatColor.GRAY + "thì mới có thể đập block & phá khiên lõi đối phương.",
                 " ",
@@ -484,9 +532,9 @@ public class CoreGui extends CustomHolder {
             }
 
             if (action.equalsIgnoreCase("BUY_SIEGE_FLAG")) {
-                double flagCost = 20000.0;
+                double flagCost = plugin.getConfig().getDouble("siege-settings.siege-flag-cost", 20000.0);
                 if (!plugin.getVaultEconomy().has(player, flagCost)) {
-                    player.sendMessage(ChatColor.RED + "Bạn không đủ Xu để mua Cờ Công Thành! Cần: 20,000 Xu.");
+                    player.sendMessage(ChatColor.RED + "Bạn không đủ Xu để mua Cờ Công Thành! Cần: " + String.format("%,.0f", flagCost) + " Xu.");
                     player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
                     return;
                 }
@@ -500,7 +548,7 @@ public class CoreGui extends CustomHolder {
                 plugin.getVaultEconomy().withdrawPlayer(player, flagCost);
                 ItemStack flag = plugin.getSiegeSession().createSiegeFlagItem();
                 player.getInventory().addItem(flag);
-                player.sendMessage(ChatColor.GREEN + "Mua Cờ Công Thành thành công! Tiêu tốn: 20,000 Xu.");
+                player.sendMessage(ChatColor.GREEN + "Mua Cờ Công Thành thành công! Tiêu tốn: " + String.format("%,.0f", flagCost) + " Xu.");
                 player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_ITEM_PICKUP, 1.0f, 1.0f);
                 return;
             }
@@ -646,13 +694,15 @@ public class CoreGui extends CustomHolder {
             plugin.getRaidSession().endRaid(core, false);
         }
 
-        long peaceDuration = 2 * 60 * 60 * 1000L;
+        double durationHours = plugin.getConfig().getDouble("raid-settings.skip-shield-duration-hours", 2.0);
+        long peaceDuration = (long) (durationHours * 60.0 * 60.0 * 1000.0);
         long newPeaceExpiry = System.currentTimeMillis() + peaceDuration;
         plugin.getCoreManager().setPeaceUntil(core.getCoreId(), newPeaceExpiry);
         plugin.getCoreManager().saveAllCores();
 
-        player.sendMessage(ChatColor.GREEN + "[Khiên] Đã nạp thành công Khiên Hòa Bình 2 giờ! Toàn bộ quái Raid hiện tại đã bị phong ấn tiêu biến.");
-        player.sendMessage(ChatColor.GRAY + "Lãnh thổ của bạn sẽ bất xâm phạm trước các đợt Raid tự động và PvP trong 2 tiếng.");
+        String hoursStr = (durationHours % 1 == 0) ? String.format("%.0f", durationHours) : String.format("%.1f", durationHours);
+        player.sendMessage(ChatColor.GREEN + "[Khiên] Đã nạp thành công Khiên Hòa Bình " + hoursStr + " giờ! Toàn bộ quái Raid hiện tại đã bị phong ấn tiêu biến.");
+        player.sendMessage(ChatColor.GRAY + "Lãnh thổ của bạn sẽ bất xâm phạm trước các đợt Raid tự động và PvP trong " + hoursStr + " tiếng.");
         player.playSound(player.getLocation(), org.bukkit.Sound.ITEM_SHIELD_BLOCK, 1.0f, 0.5f);
         player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 0.8f);
 
@@ -989,7 +1039,8 @@ public class CoreGui extends CustomHolder {
     }
 
     private double getTowerCost(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType type) {
-        return switch (type) {
+        String key = type.name().toLowerCase();
+        return plugin.getConfig().getDouble("tower-settings.types." + key + ".purchase-cost", switch (type) {
             case ARROW -> 30000.0;
             case LIGHTNING -> 45000.0;
             case FIRE -> 50000.0;
@@ -997,10 +1048,15 @@ public class CoreGui extends CustomHolder {
             case ARTILLERY -> 65000.0;
             case HEALING -> 55000.0;
             case SPELL -> 70000.0;
-        };
+        });
     }
 
     private String getTowerDisplayName(com.truongcm.territorydefense.feature.combat.tower.Tower.TowerType type) {
+        String key = type.name().toLowerCase();
+        String name = plugin.getConfig().getString("tower-settings.types." + key + ".display-name");
+        if (name != null) {
+            return ChatColor.translateAlternateColorCodes('&', name);
+        }
         return switch (type) {
             case ARROW -> "Tháp Cung (Skeleton)";
             case LIGHTNING -> "Tháp Sét (Zeus)";

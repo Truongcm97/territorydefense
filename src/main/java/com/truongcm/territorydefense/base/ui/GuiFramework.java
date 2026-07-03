@@ -4,11 +4,13 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 
 /**
  * Bộ định tuyến sự kiện click chuột duy nhất cho toàn bộ GUI.
  * Không chứa logic nghiệp vụ, chỉ chuyển tiếp click tới CustomHolder.
+ * Đã tích hợp chống trộm/dupe vật phẩm qua kéo thả (Drag Event).
  */
 public class GuiFramework implements Listener {
 
@@ -28,4 +30,14 @@ public class GuiFramework implements Listener {
             }
         }
     }
+
+    @EventHandler
+    public void onInventoryDrag(InventoryDragEvent event) {
+        Inventory topInventory = event.getView().getTopInventory();
+        // Chặn đứng hoàn toàn hành vi kéo thả vật phẩm trong giao diện CustomHolder
+        if (topInventory.getHolder() instanceof CustomHolder) {
+            event.setCancelled(true);
+        }
+    }
 }
+

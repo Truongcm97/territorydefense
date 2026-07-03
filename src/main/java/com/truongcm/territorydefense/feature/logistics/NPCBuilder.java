@@ -20,6 +20,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -37,9 +38,10 @@ public class NPCBuilder {
 
     private List<TerritoryCore.BlockSnapshot> activeDesign = null;
     private TerritoryCore activeCore = null;
-    private Player activeRequester = null;
+    private WeakReference<Player> activeRequesterRef = new WeakReference<>(null);
     private long lastNotifyTime = 0;
     private boolean isHidden = true;
+    private int currentIndex = 0;
 
     public List<TerritoryCore.BlockSnapshot> getLastPreRaidSnapshot() {
         return lastPreRaidSnapshot;
@@ -62,10 +64,11 @@ public class NPCBuilder {
         isHidden = false;
         if (entity != null) {
             entity.setInvisible(false);
-            entity.setAI(true);
-            entity.setInvulnerable(false);
-            entity.setSilent(false);
-            entity.setCollidable(true);
+            entity.setAI(false);
+            entity.setInvulnerable(true);
+            entity.setSilent(true);
+            entity.setCollidable(false);
+            entity.setGravity(false);
         }
     }
 
@@ -111,7 +114,7 @@ public class NPCBuilder {
         entity.setMetadata("td_custom_entity", new org.bukkit.metadata.FixedMetadataValue(plugin, true));
         entity.setMetadata("td_builder", new org.bukkit.metadata.FixedMetadataValue(plugin, builderUUID.toString()));
         entity.getPersistentDataContainer().set(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING, ownerCoreUUID.toString());
-        entity.setAI(true);
+        entity.setAI(false);
         entity.setGravity(false);
         entity.setCollidable(false);
         entity.setInvulnerable(true);
@@ -234,13 +237,17 @@ public class NPCBuilder {
             }
         }
 
+        // Sắp xếp thứ tự xây dựng: Từ móng lên mái (cao độ Y tăng dần), từ trong ra ngoài (khoảng cách Euclidean tăng dần)
+        sortDesignBuildOrder(design);
+
         showFromCore(core);
 
         this.activeCore = core;
         this.activeDesign = design;
-        this.activeRequester = requester;
+        this.activeRequesterRef = new WeakReference<>(requester);
         this.isRebuilding = true;
         this.isPausedForMaterials = false;
+        this.currentIndex = 0;
 
         reportMissingMaterials(core, design, requester);
 
@@ -259,48 +266,61 @@ public class NPCBuilder {
             @Override
             public void run() {
                 try {
+                    Player req = activeRequesterRef.get();
                     if (!isRebuilding || isPausedForMaterials) {
                         cancel();
                         return;
                     }
 
-                    boolean allBuilt = true;
-                    for (TerritoryCore.BlockSnapshot snap : activeDesign) {
-                        Location blockLoc = activeCore.getLocation().clone().add(snap.relX, snap.relY, snap.relZ);
-                        Block block = blockLoc.getBlock();
-                        Material targetMat = Material.matchMaterial(snap.material);
-                        if (targetMat != null) {
-                            if (!isCompatibleBlock(block, targetMat, snap.blockData)) {
-                                allBuilt = false;
-                                break;
+                    // Nếu đã duyệt qua hết mảng snapshot
+                    if (currentIndex >= activeDesign.size()) {
+                        // Thực hiện kiểm tra toàn cục cuối cùng (O(N)) trước khi hoàn thành
+                        boolean allBuilt = true;
+                        for (TerritoryCore.BlockSnapshot snap : activeDesign) {
+                            Location blockLoc = activeCore.getLocation().clone().add(snap.relX, snap.relY, snap.relZ);
+                            Block block = blockLoc.getBlock();
+                            Material targetMat = Material.matchMaterial(snap.material);
+                            if (targetMat != null) {
+                                if (!isCompatibleBlock(block, targetMat, snap.blockData)) {
+                                    allBuilt = false;
+                                    break;
+                                }
                             }
                         }
-                    }
 
-                    if (allBuilt) {
-                        isRebuilding = false;
-                        if (activeRequester != null && activeRequester.isOnline()) {
-                            activeRequester.sendMessage(ChatColor.GREEN + "[Kiến Thiết] Thợ Xây đã hoàn thành tiến trình tái thiết lãnh thổ!");
-                            activeRequester.playSound(activeRequester.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+                        if (allBuilt) {
+                            isRebuilding = false;
+                            if (req != null && req.isOnline()) {
+                                req.sendMessage(ChatColor.GREEN + "[Kiến Thiết] Thợ Xây đã hoàn thành tiến trình tái thiết lãnh thổ!");
+                                req.playSound(req.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+                            }
+                            hideInCore(activeCore);
+                            plugin.getCoreManager().registerCore(activeCore.getLocation(), activeCore);
+                            cleanupReferences();
+                            cancel();
+                            return;
+                        } else {
+                            // Quay lại từ đầu nếu có block bị phá hủy hoặc bỏ sót
+                            currentIndex = 0;
                         }
-                        hideInCore(activeCore);
-                        plugin.getCoreManager().registerCore(activeCore.getLocation(), activeCore);
-                        cancel();
-                        return;
                     }
 
                     int batch = Math.max(1, blocksPerSecond / (20 / intervalTicks));
                     int blocksPlacedThisTick = 0;
 
-                    for (int i = 0; i < activeDesign.size() && blocksPlacedThisTick < batch; i++) {
-                        TerritoryCore.BlockSnapshot snap = activeDesign.get(i);
+                    while (currentIndex < activeDesign.size() && blocksPlacedThisTick < batch) {
+                        TerritoryCore.BlockSnapshot snap = activeDesign.get(currentIndex);
                         Location blockLoc = activeCore.getLocation().clone().add(snap.relX, snap.relY, snap.relZ);
                         Block block = blockLoc.getBlock();
                         Material targetMat = Material.matchMaterial(snap.material);
 
-                        if (targetMat == null) continue;
+                        if (targetMat == null) {
+                            currentIndex++;
+                            continue;
+                        }
 
                         if (isCompatibleBlock(block, targetMat, snap.blockData)) {
+                            currentIndex++;
                             continue;
                         }
 
@@ -310,9 +330,9 @@ public class NPCBuilder {
                             long now = System.currentTimeMillis();
                             if (now - lastNotifyTime > 15000) {
                                 lastNotifyTime = now;
-                                if (activeRequester != null && activeRequester.isOnline()) {
-                                    activeRequester.sendMessage(ChatColor.RED + "[Kiến Thiết] Thợ Xây đã tạm ngưng do lõi không đủ năng lượng FEP/PEP để tiếp tục sửa chữa/đặt khối!");
-                                    activeRequester.sendMessage(ChatColor.YELLOW + "[Kiến Thiết] Hãy nạp thêm thức ăn vào Lõi để tiếp tục.");
+                                if (req != null && req.isOnline()) {
+                                    req.sendMessage(ChatColor.RED + "[Kiến Thiết] Thợ Xây đã tạm ngưng do lõi không đủ năng lượng FEP/PEP để tiếp tục sửa chữa/đặt khối!");
+                                    req.sendMessage(ChatColor.YELLOW + "[Kiến Thiết] Hãy nạp thêm thức ăn vào Lõi để tiếp tục.");
                                 }
                             }
                             hideInCore(activeCore);
@@ -352,32 +372,34 @@ public class NPCBuilder {
                             } catch (Exception ignored) {}
                             blockLoc.getWorld().playSound(blockLoc, Sound.BLOCK_STONE_PLACE, 1.0f, 1.0f);
                             
-                            // Deduct 1 FEP / PEP
+                            // Khấu trừ FEP
                             activeCore.setFep(activeCore.getFep() - 1.0);
 
                             blocksPlacedThisTick++;
-                        }
-                    }
-
-                    if (blocksPlacedThisTick == 0) {
-                        isPausedForMaterials = true;
-                        long now = System.currentTimeMillis();
-                        if (now - lastNotifyTime > 15000) {
-                            lastNotifyTime = now;
-                            if (activeRequester != null && activeRequester.isOnline()) {
-                                activeRequester.sendMessage(ChatColor.RED + "[Kiến Thiết] Thợ Xây đã tạm ngưng làm việc do thiếu nguyên liệu để tiếp tục xây dựng!");
-                                reportMissingMaterials(activeCore, activeDesign, activeRequester);
-                                activeRequester.sendMessage(ChatColor.YELLOW + "[Kiến Thiết] Mẹo: Hãy nạp thêm block vào Rương Tái Thiết để Thợ Xây tự động tiếp tục.");
+                            currentIndex++;
+                        } else {
+                            // Thiếu nguyên liệu
+                            isPausedForMaterials = true;
+                            long now = System.currentTimeMillis();
+                            if (now - lastNotifyTime > 15000) {
+                                lastNotifyTime = now;
+                                if (req != null && req.isOnline()) {
+                                    req.sendMessage(ChatColor.RED + "[Kiến Thiết] Thợ Xây đã tạm ngưng làm việc do thiếu nguyên liệu để tiếp tục xây dựng!");
+                                    reportMissingMaterials(activeCore, activeDesign, req);
+                                    req.sendMessage(ChatColor.YELLOW + "[Kiến Thiết] Mẹo: Hãy nạp thêm block vào Rương Tái Thiết để Thợ Xây tự động tiếp tục.");
+                                }
                             }
+                            hideInCore(activeCore);
+                            plugin.getCoreManager().registerCore(activeCore.getLocation(), activeCore);
+                            cancel();
+                            return;
                         }
-                        hideInCore(activeCore);
-                        plugin.getCoreManager().registerCore(activeCore.getLocation(), activeCore);
-                        cancel();
                     }
                 } catch (Exception e) {
                     plugin.getLogger().log(java.util.logging.Level.SEVERE, "Loi xay ra trong qua trinh tai thiet cua Tho Xay NPC!", e);
                     isRebuilding = false;
                     isPausedForMaterials = false;
+                    cleanupReferences();
                     if (activeCore != null) {
                         hideInCore(activeCore);
                     }
@@ -385,6 +407,34 @@ public class NPCBuilder {
                 }
             }
         }.runTaskTimer(plugin, 20L, intervalTicks);
+    }
+
+    private void sortDesignBuildOrder(List<TerritoryCore.BlockSnapshot> design) {
+        design.sort((a, b) -> {
+            // Sắp xếp theo cao độ Y trước (Dưới lên trên)
+            if (a.relY != b.relY) {
+                return Integer.compare(a.relY, b.relY);
+            }
+            // Sắp xếp theo khoảng cách đến lõi (Từ trong ra ngoài)
+            double distA = a.relX * a.relX + a.relZ * a.relZ;
+            double distB = b.relX * b.relX + b.relZ * b.relZ;
+            return Double.compare(distA, distB);
+        });
+    }
+
+    private void cleanupReferences() {
+        this.activeDesign = null;
+        this.activeCore = null;
+        this.activeRequesterRef.clear();
+    }
+
+    public void dispose() {
+        cancelRebuild();
+        this.lastPreRaidSnapshot.clear();
+        if (entity != null) {
+            entity.remove();
+            entity = null;
+        }
     }
 
     private void reportMissingMaterials(TerritoryCore core, List<TerritoryCore.BlockSnapshot> design, Player requester) {
@@ -431,7 +481,7 @@ public class NPCBuilder {
     public void tryResumeRebuilding() {
         if (isRebuilding && isPausedForMaterials && activeCore != null && activeDesign != null) {
             isPausedForMaterials = false;
-            Player p = activeRequester;
+            Player p = activeRequesterRef.get();
             if (p == null || !p.isOnline()) {
                 p = Bukkit.getPlayer(activeCore.getOwnerUUID());
             }
@@ -450,12 +500,13 @@ public class NPCBuilder {
             hideInCore(activeCore);
             TerritoryDefense.getInstance().getCoreManager().registerCore(activeCore.getLocation(), activeCore);
         }
+        cleanupReferences();
     }
 
     public boolean isCompatibleBlock(Block block, Material targetMat, String targetDataStr) {
         Material currentMat = block.getType();
         if (currentMat == targetMat) {
-            if (isCropOrPlant(targetMat) || isLiquid(targetMat) || isSoil(targetMat) || isUtilityBlock(targetMat)) {
+            if (isCropOrPlant(targetMat) || isLiquid(targetMat) || isSoil(targetMat)) {
                 return true;
             }
             return block.getBlockData().getAsString().equals(targetDataStr);
@@ -482,17 +533,5 @@ public class NPCBuilder {
 
     private boolean isSoil(Material mat) {
         return mat == Material.FARMLAND || mat == Material.DIRT || mat == Material.GRASS_BLOCK || mat == Material.DIRT_PATH;
-    }
-
-    private boolean isUtilityBlock(Material mat) {
-        String name = mat.name();
-        return name.contains("STAIRS") || name.contains("SLAB") || name.contains("FENCE") 
-            || name.contains("WALL") || name.contains("CHEST") || name.contains("FURNACE") 
-            || name.contains("DOOR") || name.contains("GATE") || name.contains("TRAPDOOR")
-            || name.contains("PANE") || name.contains("GLASS") || name.contains("LOG") 
-            || name.contains("WOOD") || name.contains("BUTTON") || name.contains("SIGN")
-            || name.contains("BED") || name.contains("TORCH") || name.contains("LANTERN")
-            || name.contains("PISTON") || name.contains("OBSIDIAN") || name.contains("STONE")
-            || name.contains("BRICK") || name.contains("TERRACOTTA") || name.contains("CONCRETE");
     }
 }

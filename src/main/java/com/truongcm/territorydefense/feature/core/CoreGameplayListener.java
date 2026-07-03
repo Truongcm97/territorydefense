@@ -72,62 +72,6 @@ public class CoreGameplayListener implements Listener {
         int shardAmount = 1;
         if (victim.hasMetadata("td_elite_boss")) {
             shardAmount = 25;
-
-            // Roll a premium random Netherite item
-            Material[] netheriteItems = {
-                Material.NETHERITE_HELMET,
-                Material.NETHERITE_CHESTPLATE,
-                Material.NETHERITE_LEGGINGS,
-                Material.NETHERITE_BOOTS,
-                Material.NETHERITE_SWORD,
-                Material.NETHERITE_AXE,
-                Material.NETHERITE_PICKAXE,
-                Material.NETHERITE_SHOVEL,
-                Material.NETHERITE_HOE
-            };
-
-            java.util.Random random = new java.util.Random();
-            Material selectedMaterial = netheriteItems[random.nextInt(netheriteItems.length)];
-            ItemStack netheriteDrop = new ItemStack(selectedMaterial);
-
-            // Fetch all available vanilla enchantments
-            java.util.List<Enchantment> availableEnchants = new java.util.ArrayList<>();
-            for (Enchantment ench : Enchantment.values()) {
-                if (ench != null) {
-                    availableEnchants.add(ench);
-                }
-            }
-
-            if (!availableEnchants.isEmpty()) {
-                java.util.Collections.shuffle(availableEnchants);
-                int count = Math.min(10, availableEnchants.size());
-                for (int i = 0; i < count; i++) {
-                    Enchantment ench = availableEnchants.get(i);
-                    int maxLvl = ench.getMaxLevel();
-                    int minLvl = ench.getStartLevel();
-                    int level = minLvl;
-                    if (maxLvl > minLvl) {
-                        level = minLvl + random.nextInt(maxLvl - minLvl + 1);
-                    }
-                    netheriteDrop.addUnsafeEnchantment(ench, level);
-                }
-            }
-
-            // Set beautiful premium name
-            ItemMeta meta = netheriteDrop.getItemMeta();
-            if (meta != null) {
-                meta.setDisplayName(ChatColor.GOLD + "★ Cổ Vật Thượng Cổ Netherite ★");
-                java.util.List<String> lore = new java.util.ArrayList<>();
-                lore.add(ChatColor.GRAY + "Rơi ra từ việc tiêu diệt Siêu Cấp Mini-Boss!");
-                lore.add(ChatColor.YELLOW + "Chứa đựng 10 dòng cổ tự ma pháp vĩnh cửu.");
-                meta.setLore(lore);
-                netheriteDrop.setItemMeta(meta);
-            }
-
-            // Drop at location
-            if (deathLoc.getWorld() != null) {
-                deathLoc.getWorld().dropItemNaturally(deathLoc, netheriteDrop);
-            }
         } else if (victim.getType() == EntityType.RAVAGER || victim.getType() == EntityType.EVOKER) {
             shardAmount = 3;
         }
@@ -136,7 +80,7 @@ public class CoreGameplayListener implements Listener {
         coreManager.saveAllCores();
 
         // Tích lũy Shard thu hoạch tự động vào chiến dịch Raid đang diễn ra (nếu có)
-        com.truongcm.territorydefense.feature.combat.raid.RaidSession.ActiveRaidCampaign campaign = 
+        com.truongcm.territorydefense.feature.combat.raid.model.ActiveRaidCampaign campaign = 
             plugin.getRaidSession().getActiveRaid(core);
         if (campaign != null) {
             campaign.addWaveHarvestedShards(core.getOwnerUUID(), shardAmount);
@@ -167,7 +111,7 @@ public class CoreGameplayListener implements Listener {
             return;
         }
 
-        player.sendMessage(ChatColor.RED + "Để đảm bảo an toàn dữ liệu, bạn không thể đập trực tiếp khối Lõi bằng tay! Vui lòng mở GUI của Lõi và chọn chức năng [Thu hồi Lõi].");
+        player.sendMessage(ChatColor.RED + "[Bảo vệ] Lõi Lãnh Thổ có tính chất Soulbound bền vững và không thể bị phá hủy vật lý! Hãy mở GUI quản lý Lõi để thực hiện thu hồi an toàn.");
         player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
         event.setCancelled(true);
     }

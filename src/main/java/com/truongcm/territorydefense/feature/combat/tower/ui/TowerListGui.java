@@ -31,7 +31,7 @@ public class TowerListGui extends CustomHolder {
         this.plugin = plugin;
         this.core = core;
         this.player = player;
-        this.actionKey = PDCKeys.GUI_ACTION != null ? PDCKeys.GUI_ACTION : new NamespacedKey(plugin, "gui_action");
+        this.actionKey = PDCKeys.GUI_ACTION;
     }
 
     @Override

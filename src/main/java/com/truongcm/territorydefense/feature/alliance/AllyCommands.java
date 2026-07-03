@@ -3,7 +3,7 @@ package com.truongcm.territorydefense.feature.alliance;
 import com.truongcm.territorydefense.TerritoryDefense;
 import com.truongcm.territorydefense.feature.alliance.Alliance;
 import com.truongcm.territorydefense.feature.core.TerritoryCore;
-import com.truongcm.territorydefense.feature.alliance.ui.AllyMainMenuGui;
+import com.truongcm.territorydefense.base.ui.GUIRouter;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.OfflinePlayer;
@@ -121,18 +121,8 @@ public class AllyCommands implements CommandExecutor {
     }
 
     private void openAllianceMenu(Player player) {
-        String allyId = plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId());
-
-        if (allyId == null) {
-            player.openInventory(new AllyMainMenuGui(plugin, null, player).getInventory(player));
-            player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_BARREL_OPEN, 1.0f, 1.0f);
-            return;
-        }
-
-        Alliance alliance = plugin.getAllianceManager().getAlliance(allyId);
-        if (alliance != null) {
-            player.openInventory(new AllyMainMenuGui(plugin, alliance, player).getInventory(player));
-        }
+        GUIRouter.openAllianceMenu(player);
+        player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_BARREL_OPEN, 1.0f, 1.0f);
     }
 
     private void handleCreateAlliance(Player player, String name) {
@@ -489,29 +479,18 @@ public class AllyCommands implements CommandExecutor {
             return;
         }
 
-        // 4. Khởi chạy phiên chiến sự thông qua Reflection linh hoạt để tránh lệch chữ ký phương thức
+        // 4. Khởi chạy phiên chiến sự trực tiếp qua SiegeSession API tường minh
         boolean success = false;
         if (plugin.getSiegeSession() != null) {
             try {
-                // Thử gọi phương thức 4 tham số: declareWar(Player, String, String, TerritoryCore)
-                java.lang.reflect.Method method = plugin.getSiegeSession().getClass()
-                        .getMethod("declareWar", Player.class, String.class, String.class, TerritoryCore.class);
-                method.invoke(plugin.getSiegeSession(), player, attackerId, defenderId, defenderCore);
+                plugin.getSiegeSession().declareWar(player, attackerId, defenderId, defenderCore);
                 success = true;
-            } catch (Exception e1) {
+            } catch (Exception e) {
                 try {
-                    // Thử gọi phương thức 2 tham số: declareWar(Player, TerritoryCore)
-                    java.lang.reflect.Method method = plugin.getSiegeSession().getClass()
-                            .getMethod("declareWar", Player.class, TerritoryCore.class);
-                    method.invoke(plugin.getSiegeSession(), player, defenderCore);
+                    // Thử gọi command gián tiếp phòng hờ
+                    player.performCommand("td war declare " + defenderId);
                     success = true;
-                } catch (Exception e2) {
-                    try {
-                        // Thử gọi command gián tiếp phòng hờ
-                        player.performCommand("td war declare " + defenderId);
-                        success = true;
-                    } catch (Exception ignored) {}
-                }
+                } catch (Exception ignored) {}
             }
         }
 

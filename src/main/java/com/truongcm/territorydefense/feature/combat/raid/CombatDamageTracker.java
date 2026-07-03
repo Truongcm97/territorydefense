@@ -209,7 +209,7 @@ public class CombatDamageTracker implements Listener {
                 boolean shardDropped = Math.random() < dropRate;
 
                 // Lấy chiến dịch Raid đang diễn ra để tích lũy
-                com.truongcm.territorydefense.feature.combat.raid.RaidSession.ActiveRaidCampaign campaign = 
+                com.truongcm.territorydefense.feature.combat.raid.model.ActiveRaidCampaign campaign = 
                     (nearestCore != null) ? plugin.getRaidSession().getActiveRaid(nearestCore) : null;
 
                 if (shardDropped) {
@@ -250,8 +250,12 @@ public class CombatDamageTracker implements Listener {
                     }
                     java.util.Collections.shuffle(allEnchants);
 
-                    // Ngẫu nhiên từ 1 đến 15 dòng
-                    int randLines = (int)(Math.random() * 15) + 1;
+                    // Ngẫu nhiên dòng phù phép từ cấu hình
+                    int minLines = plugin.getConfig().getInt("raid-settings.elite-boss.min-enchant-lines", 1);
+                    int maxLines = plugin.getConfig().getInt("raid-settings.elite-boss.max-enchant-lines", 15);
+                    if (minLines < 1) minLines = 1;
+                    if (maxLines < minLines) maxLines = minLines;
+                    int randLines = minLines + (int)(Math.random() * (maxLines - minLines + 1));
                     int count = Math.min(randLines, allEnchants.size());
                     
                     for (int i = 0; i < count; i++) {
@@ -268,7 +272,14 @@ public class CombatDamageTracker implements Listener {
                     }
                     
                     player.getInventory().addItem(bossItem);
-                    player.sendMessage(ChatColor.GOLD + "[Mini-boss] Bạn nhận được: " + ChatColor.YELLOW + bossItem.getItemMeta().getDisplayName() + ChatColor.LIGHT_PURPLE + " với " + ChatColor.GREEN + count + ChatColor.LIGHT_PURPLE + " dòng Phù Phép!");
+                    
+                    String rawMsg = plugin.getConfig().getString("raid-settings.elite-boss.reward-message", "&6[Mini-boss] Bạn nhận được: &e%item% &dvới &a%count% &ddòng Phù Phép!");
+                    String itemName = (bossItem.getItemMeta() != null && bossItem.getItemMeta().hasDisplayName()) ? bossItem.getItemMeta().getDisplayName() : selectedMat.name();
+                    String message = ChatColor.translateAlternateColorCodes('&', rawMsg
+                        .replace("%item%", itemName)
+                        .replace("%count%", String.valueOf(count)));
+                    player.sendMessage(message);
+                    
                     player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
                 }
 
@@ -299,7 +310,7 @@ public class CombatDamageTracker implements Listener {
                 if (plugin.getCoreManager() != null) {
                     nearestCore = plugin.getCoreManager().getCoreByLocationRange(event.getEntity().getLocation());
                 }
-                com.truongcm.territorydefense.feature.combat.raid.RaidSession.ActiveRaidCampaign campaign = 
+                com.truongcm.territorydefense.feature.combat.raid.model.ActiveRaidCampaign campaign = 
                     (nearestCore != null) ? plugin.getRaidSession().getActiveRaid(nearestCore) : null;
                 if (campaign != null) {
                     campaign.incrementWaveMobsMissed(player.getUniqueId());

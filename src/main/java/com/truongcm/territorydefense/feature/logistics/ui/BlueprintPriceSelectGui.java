@@ -30,7 +30,7 @@ public class BlueprintPriceSelectGui extends CustomHolder {
         this.core = core;
         this.slotIndex = slotIndex;
         this.currentPrice = initialPrice <= 0 ? 100000.0 : initialPrice;
-        this.actionKey = PDCKeys.GUI_ACTION != null ? PDCKeys.GUI_ACTION : new NamespacedKey(plugin, "gui_action");
+        this.actionKey = PDCKeys.GUI_ACTION;
     }
 
     @Override

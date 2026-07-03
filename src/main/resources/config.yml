@@ -98,6 +98,7 @@ farmer-settings:
       fep-multiplier: 1.0
       scan-frequency-ticks: 100 # 5 giây quét 1 lần
       upgrade-cost: 0.0
+      upgrade-cost-shards: 0
     2:
       speed: 0.25
       scan-radius: 20
@@ -105,6 +106,7 @@ farmer-settings:
       fep-multiplier: 1.1
       scan-frequency-ticks: 100
       upgrade-cost: 50000.0
+      upgrade-cost-shards: 5
     3:
       speed: 0.30
       scan-radius: 25
@@ -112,6 +114,7 @@ farmer-settings:
       fep-multiplier: 1.2
       scan-frequency-ticks: 80  # 4 giây quét 1 lần
       upgrade-cost: 150000.0
+      upgrade-cost-shards: 15
     4:
       speed: 0.35
       scan-radius: 30
@@ -119,6 +122,7 @@ farmer-settings:
       fep-multiplier: 1.35
       scan-frequency-ticks: 80
       upgrade-cost: 400000.0
+      upgrade-cost-shards: 30
     5:
       speed: 0.40
       scan-radius: 35           # Giảm từ 64 xuống 35 để thu hẹp vùng tìm kiếm thực thể gây lag
@@ -126,6 +130,7 @@ farmer-settings:
       fep-multiplier: 1.5
       scan-frequency-ticks: 60  # Đặt tối thiểu 3 giây để tránh nghẽn luồng xử lý chính (Main Thread)
       upgrade-cost: 1000000.0
+      upgrade-cost-shards: 50
 
   # Giới hạn thực thể gia súc trong vùng đất để bảo vệ thực thể Paper
   max-pasture-animals: 20
@@ -141,6 +146,8 @@ tower-settings:
   merge-damage-boost-per-core: 0.05
   # Giảm sát thương khi tháp bắn vào người chơi (PvP balance: 10%)
   player-damage-reduction: 0.10
+  # --- TỐI ƯU HÓA HIỆU NĂNG TPS ---
+  idle-scan-throttle-ticks: 20
 
   upgrade-costs:
     level-2: { money: 20000.0, shards: 0 }
@@ -152,6 +159,7 @@ tower-settings:
   types:
     lightning:
       display-name: "&bTháp Điện (Creeper)"
+      purchase-cost: 45000.0
       scanning-radius: 8.0
       attack-speed-ticks: 15
       fep-cost: 6.0
@@ -162,6 +170,7 @@ tower-settings:
         chain-damage-ratio: 0.70  # Quái lan nhận 70% sát thương
     arrow:
       display-name: "&eTháp Cung (Skeleton)"
+      purchase-cost: 30000.0
       scanning-radius: 16.0
       attack-speed-ticks: 20
       damage: [18.0, 26.0, 39.0, 54.0, 72.0]
@@ -171,6 +180,7 @@ tower-settings:
         pierce-hitbox: 1.4        # Bán kính quét ray-pierce (block)
     fire:
       display-name: "&cTháp Lửa (Blaze)"
+      purchase-cost: 50000.0
       scanning-radius: 15.0
       attack-speed-ticks: 30
       damage: [24.0, 36.0, 52.0, 72.0, 96.0]
@@ -179,6 +189,7 @@ tower-settings:
         fire-ticks: 80            # Số tick thiêu đốt mục tiêu (80 = 4 giây)
     frost:
       display-name: "&9Tháp Băng (Stray)"
+      purchase-cost: 40000.0
       scanning-radius: 12.0
       attack-speed-ticks: 40
       damage: [12.0, 18.0, 26.0, 36.0, 48.0]
@@ -187,6 +198,7 @@ tower-settings:
         slow-duration-ticks: 60
     artillery:
       display-name: "&7Tháp Pháo (Ghast)"
+      purchase-cost: 65000.0
       scanning-radius: 20.0
       attack-speed-ticks: 60
       damage: [48.0, 72.0, 105.0, 144.0, 192.0]
@@ -195,6 +207,7 @@ tower-settings:
         aoe-radius: 4.0
     healing:
       display-name: "&dTháp Hồi (Evoker)"
+      purchase-cost: 55000.0
       scanning-radius: 14.0
       attack-speed-ticks: 80
       healing-amount: [18.0, 26.0, 39.0, 54.0, 72.0]
@@ -202,6 +215,7 @@ tower-settings:
         reflect-damage-percent: 10
     spell:
       display-name: "&5Tháp Phép (Witch)"
+      purchase-cost: 70000.0
       scanning-radius: 12.0
       attack-speed-ticks: 100
       damage-buff-percent: [5, 8, 12, 15, 20]
@@ -378,6 +392,23 @@ raid-settings:
     DEFAULT: 50.0
     GIANT: 300.0
     RAVAGER: 150.0
+    VINDICATOR: 40.0
+    EVOKER: 30.0
+
+  # --- Cấu hình Bỏ qua Raid ---
+  skip-shield-duration-hours: 2.0
+
+  # --- Cấu hình Elite Boss (Mini-Boss) ---
+  elite-boss:
+    spawn-chance: 0.01             # Tỷ lệ xuất hiện Elite Boss tự nhiên ở Wave cuối (0.01 = 1%)
+    hp-multiplier: 2.0             # Hệ số nhân lượng HP của Elite Boss
+    damage-multiplier: 1.5         # Hệ số nhân sát thương của Elite Boss
+    min-enchant-lines: 1           # Số dòng phù phép ngẫu nhiên tối thiểu cho trang bị cực phẩm nhận được
+    max-enchant-lines: 15          # Số dòng phù phép ngẫu nhiên tối đa cho trang bị cực phẩm nhận được
+    display-name-prefix: "&6★ ELITE BOSS ★ " # Tiền tố tên hiển thị màu vàng rực rỡ của Elite Boss
+    spawn-sound: "ENTITY_WITHER_SPAWN" # Âm thanh xuất hiện hùng tráng
+    spawn-warning-message: "&6★ SIÊU CẤP MINI-BOSS ★ &cMột &eElite Boss &ccực kỳ nguy hiểm đã xuất hiện tại Wave cuối của Lõi Liên Minh &e%alliance%&c! Hãy hợp lực cùng các dũng sĩ tiêu diệt!" # Thông báo triệu hồi Elite Boss
+    reward-message: "&6[Mini-boss] Bạn nhận được: &e%item% &dvới &a%count% &ddòng Phù Phép!" # Thông điệp nhận thưởng trực tiếp
 
 # ------------------------------------------------------------------------------
 # 7. CHIẾN TRANH LIÊN MINH (PVP SIEGE MODE)
@@ -388,6 +419,7 @@ siege-settings:
   defender-shield-regen-penalty-percent: 50
   void-wall-cooldown-seconds: 600
   capture-time-seconds: 60
+  siege-flag-cost: 20000.0
   # ----------------------------------------------------------------------------
   # PHẦN THƯỞNG CHIẾN THẮNG & HỆ QUẢ BẠI TRẬN (VICTORY & PENALTY SETTINGS)
   # ----------------------------------------------------------------------------

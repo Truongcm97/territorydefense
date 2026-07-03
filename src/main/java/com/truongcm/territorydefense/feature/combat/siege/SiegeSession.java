@@ -246,7 +246,7 @@ public class SiegeSession implements Listener {
      */
     @EventHandler
     public void onCoreCaptureAttempt(PlayerInteractEvent event) {
-        if (event.getClickedBlock() == null || event.getClickedBlock().getType() != org.bukkit.Material.BEACON) return;
+        if (event.getClickedBlock() == null || event.getClickedBlock().getType() != org.bukkit.Material.CONDUIT) return;
 
         Player player = event.getPlayer();
         TerritoryCore core = plugin.getCoreManager().getCoreAt(event.getClickedBlock().getLocation());
@@ -257,7 +257,7 @@ public class SiegeSession implements Listener {
 
         if (defenderAlly == null || !isAtWar(attackerAlly, defenderAlly)) return;
 
-        event.setCancelled(true); // Ngăn mở giao diện Beacon mặc định
+        event.setCancelled(true); // Ngăn hoạt động mặc định của Lõi Conduit
 
         // 1. Kiểm tra Giáp ảo (Shield HP). Bắt buộc phải đánh sập giáp ảo về 0 mới được chiếm đóng
         if (core.getShield() > 0.0) {

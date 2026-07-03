@@ -2,8 +2,8 @@ package com.truongcm.territorydefense.feature.combat.siege.ui;
 
 import com.truongcm.territorydefense.TerritoryDefense;
 import com.truongcm.territorydefense.base.ui.CustomHolder;
+import com.truongcm.territorydefense.base.ui.GUIRouter;
 import com.truongcm.territorydefense.feature.alliance.Alliance;
-import com.truongcm.territorydefense.feature.alliance.ui.AllyMainMenuGui;
 import com.truongcm.territorydefense.feature.core.PDCKeys;
 import com.truongcm.territorydefense.feature.core.TerritoryCore;
 import org.bukkit.Bukkit;
@@ -193,17 +193,8 @@ public class WarDeclarationGui extends CustomHolder {
             }
 
             if (action.equalsIgnoreCase("CLOSE_TO_MAIN_ALLY")) {
-                String allyId = plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId());
-                if (allyId == null) {
-                    player.openInventory(new AllyMainMenuGui(plugin, null, player).getInventory(player));
-                } else {
-                    Alliance alliance = plugin.getAllianceManager().getAlliance(allyId);
-                    if (alliance != null) {
-                        player.openInventory(new AllyMainMenuGui(plugin, alliance, player).getInventory(player));
-                    } else {
-                        player.closeInventory();
-                    }
-                }
+                player.closeInventory();
+                GUIRouter.openAllianceMenu(player);
                 player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_BARREL_CLOSE, 1.0f, 1.0f);
                 return;
             }

@@ -2,6 +2,7 @@ package com.truongcm.territorydefense.feature.alliance.ui;
 
 import com.truongcm.territorydefense.TerritoryDefense;
 import com.truongcm.territorydefense.base.ui.CustomHolder;
+import com.truongcm.territorydefense.base.ui.GUIRouter;
 import com.truongcm.territorydefense.feature.alliance.Alliance;
 import com.truongcm.territorydefense.feature.core.PDCKeys;
 import org.bukkit.Bukkit;
@@ -12,13 +13,11 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.persistence.PersistentDataContainer;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -46,27 +45,35 @@ public class AllyInviteGui extends CustomHolder {
 
     public Inventory getInventory(Player viewer) {
         Inventory inv = Bukkit.createInventory(this, 54, ChatColor.DARK_GREEN + "Mời Thành Viên Vào Bang");
-
-        ItemStack greenPane = new ItemStack(Material.GREEN_STAINED_GLASS_PANE);
-        ItemMeta greenMeta = greenPane.getItemMeta();
-        if (greenMeta != null) {
-            greenMeta.setDisplayName(" ");
-            greenPane.setItemMeta(greenMeta);
+        
+        setupBackground(inv);
+        int onlinePlayersCount = renderOnlinePlayers(inv, viewer);
+        
+        if (onlinePlayersCount == 0) {
+            inv.setItem(22, createGuiItem(Material.BARRIER, ChatColor.RED + "" + ChatColor.BOLD + "Không Có Người Chơi Solo Online", actionKey, "NONE",
+                    ChatColor.GRAY + "Hiện tại toàn bộ người chơi trực tuyến trên Server",
+                    ChatColor.GRAY + "đều đã tham gia các tổ chức Liên Minh khác."
+            ));
         }
+
+        inv.setItem(49, createGuiItem(Material.BARRIER, ChatColor.RED + "" + ChatColor.BOLD + "Quay Lại Bang Hội", actionKey, "CLOSE_TO_ALLY_MENU"));
+
+        return inv;
+    }
+
+    private void setupBackground(Inventory inv) {
+        ItemStack greenPane = createGuiItem(Material.GREEN_STAINED_GLASS_PANE, " ", actionKey, "NONE");
         for (int i = 0; i < 45; i++) {
             inv.setItem(i, greenPane);
         }
 
-        ItemStack darkPane = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-        ItemMeta darkMeta = darkPane.getItemMeta();
-        if (darkMeta != null) {
-            darkMeta.setDisplayName(" ");
-            darkPane.setItemMeta(darkMeta);
-        }
+        ItemStack darkPane = createGuiItem(Material.GRAY_STAINED_GLASS_PANE, " ", actionKey, "NONE");
         for (int i = 45; i < 54; i++) {
             inv.setItem(i, darkPane);
         }
+    }
 
+    private int renderOnlinePlayers(Inventory inv, Player viewer) {
         int slot = 0;
         for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
             if (slot >= 45) break;
@@ -80,38 +87,32 @@ public class AllyInviteGui extends CustomHolder {
                 continue;
             }
 
-            ItemStack head = new ItemStack(Material.PLAYER_HEAD);
-            SkullMeta skullMeta = (SkullMeta) head.getItemMeta();
-            if (skullMeta != null) {
-                skullMeta.setOwningPlayer(onlinePlayer);
-                skullMeta.setDisplayName(ChatColor.GREEN + "" + ChatColor.BOLD + onlinePlayer.getName());
-
-                List<String> lore = new ArrayList<>();
-                lore.add(ChatColor.GRAY + "Trạng thái: " + ChatColor.GREEN + "Trực tuyến (Online)");
-                lore.add(ChatColor.GRAY + "Chức nghiệp: " + ChatColor.YELLOW + "Tự Do (Solo)");
-                lore.add(" ");
-                lore.add(ChatColor.YELLOW + "➔ Nhấp chuột trái để GỬI LỜI MỜI GIA NHẬP!");
-
-                skullMeta.setLore(lore);
-                skullMeta.getPersistentDataContainer().set(actionKey, PersistentDataType.STRING, "INVITE_PLAYER_TARGET");
-                skullMeta.getPersistentDataContainer().set(targetKey, PersistentDataType.STRING, onlinePlayer.getName());
-                head.setItemMeta(skullMeta);
-            }
-
+            ItemStack head = createPlayerHead(onlinePlayer);
             inv.setItem(slot, head);
             slot++;
         }
+        return slot;
+    }
 
-        if (slot == 0) {
-            inv.setItem(22, createGuiItem(Material.BARRIER, ChatColor.RED + "" + ChatColor.BOLD + "Không Có Người Chơi Solo Online", "NONE",
-                    ChatColor.GRAY + "Hiện tại toàn bộ người chơi trực tuyến trên Server",
-                    ChatColor.GRAY + "đều đã tham gia các tổ chức Liên Minh khác."
-            ));
+    private ItemStack createPlayerHead(Player onlinePlayer) {
+        ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+        SkullMeta skullMeta = (SkullMeta) head.getItemMeta();
+        if (skullMeta != null) {
+            skullMeta.setOwningPlayer(onlinePlayer);
+            skullMeta.setDisplayName(ChatColor.GREEN + "" + ChatColor.BOLD + onlinePlayer.getName());
+
+            List<String> lore = new ArrayList<>();
+            lore.add(ChatColor.GRAY + "Trạng thái: " + ChatColor.GREEN + "Trực tuyến (Online)");
+            lore.add(ChatColor.GRAY + "Chức nghiệp: " + ChatColor.YELLOW + "Tự Do (Solo)");
+            lore.add(" ");
+            lore.add(ChatColor.YELLOW + "➔ Nhấp chuột trái để GỬI LỜI MỜI GIA NHẬP!");
+
+            skullMeta.setLore(lore);
+            skullMeta.getPersistentDataContainer().set(actionKey, PersistentDataType.STRING, "INVITE_PLAYER_TARGET");
+            skullMeta.getPersistentDataContainer().set(targetKey, PersistentDataType.STRING, onlinePlayer.getName());
+            head.setItemMeta(skullMeta);
         }
-
-        inv.setItem(49, createGuiItem(Material.BARRIER, ChatColor.RED + "" + ChatColor.BOLD + "Quay Lại Bang Hội", "CLOSE_TO_ALLY_MENU"));
-
-        return inv;
+        return head;
     }
 
     @Override
@@ -125,38 +126,34 @@ public class AllyInviteGui extends CustomHolder {
             if (action == null) return;
 
             if (action.equalsIgnoreCase("CLOSE_TO_ALLY_MENU")) {
-                player.closeInventory();
-                player.openInventory(new AllyMainMenuGui(plugin, alliance, player).getInventory(player));
-                player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_BARREL_CLOSE, 1.0f, 1.0f);
+                handleReturnToMenu(player);
                 return;
             }
 
-            String targetName = pdc.get(targetKey, PersistentDataType.STRING);
-            if ("INVITE_PLAYER_TARGET".equals(action) && targetName != null) {
-                Player target = Bukkit.getPlayer(targetName);
-                if (target != null) {
-                    plugin.getAllianceManager().sendInvite(player, target);
-                    player.sendMessage(ChatColor.GREEN + "[Liên minh] Đã gửi lời mời tới: " + target.getName());
-                } else {
-                    player.sendMessage(ChatColor.RED + "[Lỗi] Người chơi không còn online!");
-                }
-                player.closeInventory();
+            if ("INVITE_PLAYER_TARGET".equals(action)) {
+                handleInviteClick(pdc, player);
             }
         }
     }
 
-    private ItemStack createGuiItem(Material material, String name, String actionTag, String... loreLines) {
-        ItemStack item = new ItemStack(material);
-        var meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(name);
-            if (loreLines.length > 0) {
-                meta.setLore(Arrays.asList(loreLines));
+    private void handleReturnToMenu(Player player) {
+        player.closeInventory();
+        GUIRouter.openAllianceMenu(player);
+        player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_BARREL_CLOSE, 1.0f, 1.0f);
+    }
+
+    private void handleInviteClick(PersistentDataContainer pdc, Player player) {
+        String targetName = pdc.get(targetKey, PersistentDataType.STRING);
+        if (targetName != null) {
+            Player target = Bukkit.getPlayer(targetName);
+            if (target != null) {
+                plugin.getAllianceManager().sendInvite(player, target);
+                player.sendMessage(ChatColor.GREEN + "[Liên minh] Đã gửi lời mời tới: " + target.getName());
+            } else {
+                player.sendMessage(ChatColor.RED + "[Lỗi] Người chơi không còn online!");
             }
-            meta.getPersistentDataContainer().set(actionKey, PersistentDataType.STRING, actionTag);
-            item.setItemMeta(meta);
+            player.closeInventory();
         }
-        return item;
     }
 
     public Alliance getAlliance() {

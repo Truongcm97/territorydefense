@@ -45,13 +45,7 @@ public class FarmerDismissConfirmGui extends CustomHolder {
         int totalShards = 0;
         for (int lvl = 2; lvl <= level; lvl++) {
             totalMoney += plugin.getConfig().getDouble("farmer-settings.levels." + lvl + ".upgrade-cost", 0.0);
-            totalShards += switch (lvl) {
-                case 2 -> 5;
-                case 3 -> 15;
-                case 4 -> 30;
-                case 5 -> 50;
-                default -> 0;
-            };
+            totalShards += plugin.getConfig().getInt("farmer-settings.levels." + lvl + ".upgrade-cost-shards", 0);
         }
 
         this.refundMoney = totalMoney * 0.5;

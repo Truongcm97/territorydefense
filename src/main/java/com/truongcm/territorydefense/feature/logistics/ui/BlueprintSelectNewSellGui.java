@@ -31,7 +31,7 @@ public class BlueprintSelectNewSellGui extends CustomHolder {
     public BlueprintSelectNewSellGui(TerritoryDefense plugin, TerritoryCore core) {
         this.plugin = plugin;
         this.core = core;
-        this.actionKey = PDCKeys.GUI_ACTION != null ? PDCKeys.GUI_ACTION : new NamespacedKey(plugin, "gui_action");
+        this.actionKey = PDCKeys.GUI_ACTION;
     }
 
     @Override
