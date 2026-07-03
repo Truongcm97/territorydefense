@@ -206,9 +206,13 @@ public class ActiveRaidCampaign {
     }
 
     private void tickMobAI() {
+        List<Entity> invalidMobs = new ArrayList<>();
         synchronized (aliveMobs) {
             for (Entity entity : aliveMobs) {
-                if (!(entity instanceof org.bukkit.entity.Mob mob) || !mob.isValid()) continue;
+                if (!(entity instanceof org.bukkit.entity.Mob mob) || !mob.isValid()) {
+                    invalidMobs.add(entity);
+                    continue;
+                }
 
                 displayManager.updateMobCustomName(mob);
 
@@ -400,6 +404,12 @@ public class ActiveRaidCampaign {
                 }
             }
         }
+
+        if (!invalidMobs.isEmpty()) {
+            for (Entity entity : invalidMobs) {
+                registerMobKill(entity);
+            }
+        }
     }
 
     public void launchNextWave() {
@@ -436,7 +446,7 @@ public class ActiveRaidCampaign {
         double totalRaidScaling = Math.pow(totalRaidScalingFactor, core.getTotalRaidCount());
 
         double otr = calculateCoreOtr();
-        double hpOtrBonus = 1.0 + (otr * plugin.getConfig().getDouble("raid-settings.otr-multipliers.hp-increase-per-otr", 0.06));
+        double hpOtrBonus = 1.0 + (otr * plugin.getConfig().getDouble("raid-settings.difficulty-scaling.otr-multipliers.hp-increase-per-otr", 0.06));
         double finalHpMultiplier = staticMult * dynamicMult * callScaling * totalRaidScaling * hpOtrBonus;
 
         double radius = core.getRadius();
@@ -649,7 +659,7 @@ public class ActiveRaidCampaign {
 
             if (attackDamageAttr != null) {
                 double otr = calculateCoreOtr();
-                double damageOtrBonus = 1.0 + (otr * plugin.getConfig().getDouble("raid-settings.otr-multipliers.damage-increase-per-otr", 0.04));
+                double damageOtrBonus = 1.0 + (otr * plugin.getConfig().getDouble("raid-settings.difficulty-scaling.otr-multipliers.damage-increase-per-otr", 0.04));
                 double finalDmgMult = damageOtrBonus;
                 if (mob.hasMetadata("td_elite_boss")) {
                     double dmgMult = plugin.getConfig().getDouble("raid-settings.elite-boss.damage-multiplier", 1.5);
@@ -740,9 +750,9 @@ public class ActiveRaidCampaign {
         }
         double completedRaids = core.getCompletedRaids();
 
-        double countWeight = plugin.getConfig().getDouble("raid-settings.otr-formula.tower-count-weight", 0.5);
-        double lvlWeight = plugin.getConfig().getDouble("raid-settings.otr-formula.tower-level-weight", 0.2);
-        double raidsWeight = plugin.getConfig().getDouble("raid-settings.otr-formula.completed-raids-weight", 0.02);
+        double countWeight = plugin.getConfig().getDouble("raid-settings.difficulty-scaling.otr-formula.tower-count-weight", 0.5);
+        double lvlWeight = plugin.getConfig().getDouble("raid-settings.difficulty-scaling.otr-formula.tower-level-weight", 0.2);
+        double raidsWeight = plugin.getConfig().getDouble("raid-settings.difficulty-scaling.otr-formula.completed-raids-weight", 0.02);
 
         return lvl + (towerCount * countWeight) + (totalTowerLevels * lvlWeight) + (completedRaids * raidsWeight);
     }
@@ -753,10 +763,10 @@ public class ActiveRaidCampaign {
 
         double otr = calculateCoreOtr();
 
-        double baseQty = plugin.getConfig().getDouble("raid-settings.otr-multipliers.spawn-quantity.base", 15);
-        double weightPerOtr = plugin.getConfig().getDouble("raid-settings.otr-multipliers.spawn-quantity.weight-per-otr", 2.5);
-        int minLimit = plugin.getConfig().getInt("raid-settings.otr-multipliers.spawn-quantity.min-limit", 10);
-        int maxLimit = plugin.getConfig().getInt("raid-settings.otr-multipliers.spawn-quantity.max-limit", 60);
+        double baseQty = plugin.getConfig().getDouble("raid-settings.difficulty-scaling.otr-multipliers.spawn-quantity.base", 15);
+        double weightPerOtr = plugin.getConfig().getDouble("raid-settings.difficulty-scaling.otr-multipliers.spawn-quantity.weight-per-otr", 2.5);
+        int minLimit = plugin.getConfig().getInt("raid-settings.difficulty-scaling.otr-multipliers.spawn-quantity.min-limit", 10);
+        int maxLimit = plugin.getConfig().getInt("raid-settings.difficulty-scaling.otr-multipliers.spawn-quantity.max-limit", 60);
 
         int expectedTotal = (int) (baseQty + (weightPerOtr * otr));
         expectedTotal = Math.max(minLimit, Math.min(maxLimit, expectedTotal));
