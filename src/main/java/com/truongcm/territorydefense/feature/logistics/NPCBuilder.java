@@ -42,6 +42,7 @@ public class NPCBuilder {
     private long lastNotifyTime = 0;
     private boolean isHidden = true;
     private int currentIndex = 0;
+    private boolean placedAnyInCurrentPass = false;
 
     public List<TerritoryCore.BlockSnapshot> getLastPreRaidSnapshot() {
         return lastPreRaidSnapshot;
@@ -248,6 +249,7 @@ public class NPCBuilder {
         this.isRebuilding = true;
         this.isPausedForMaterials = false;
         this.currentIndex = 0;
+        this.placedAnyInCurrentPass = false;
 
         reportMissingMaterials(core, design, requester);
 
@@ -300,8 +302,26 @@ public class NPCBuilder {
                             cancel();
                             return;
                         } else {
-                            // Quay lại từ đầu nếu có block bị phá hủy hoặc bỏ sót
+                            if (!placedAnyInCurrentPass) {
+                                // Thực sự thiếu nguyên liệu cho tất cả các block còn lại
+                                isPausedForMaterials = true;
+                                long now = System.currentTimeMillis();
+                                if (now - lastNotifyTime > 15000) {
+                                    lastNotifyTime = now;
+                                    if (req != null && req.isOnline()) {
+                                        req.sendMessage(ChatColor.RED + "[Kiến Thiết] Thợ Xây đã tạm ngưng làm việc do thiếu nguyên liệu để tiếp tục xây dựng các khối còn lại!");
+                                        reportMissingMaterials(activeCore, activeDesign, req);
+                                        req.sendMessage(ChatColor.YELLOW + "[Kiến Thiết] Mẹo: Hãy nạp thêm block vào Rương Tái Thiết để Thợ Xây tự động tiếp tục.");
+                                    }
+                                }
+                                hideInCore(activeCore);
+                                plugin.getCoreManager().registerCore(activeCore.getLocation(), activeCore);
+                                cancel();
+                                return;
+                            }
+                            // Quay lại từ đầu nếu có block bị phá hủy hoặc bỏ sót và chúng ta vẫn tiến triển
                             currentIndex = 0;
+                            placedAnyInCurrentPass = false;
                         }
                     }
 
@@ -377,22 +397,10 @@ public class NPCBuilder {
 
                             blocksPlacedThisTick++;
                             currentIndex++;
+                            placedAnyInCurrentPass = true;
                         } else {
-                            // Thiếu nguyên liệu
-                            isPausedForMaterials = true;
-                            long now = System.currentTimeMillis();
-                            if (now - lastNotifyTime > 15000) {
-                                lastNotifyTime = now;
-                                if (req != null && req.isOnline()) {
-                                    req.sendMessage(ChatColor.RED + "[Kiến Thiết] Thợ Xây đã tạm ngưng làm việc do thiếu nguyên liệu để tiếp tục xây dựng!");
-                                    reportMissingMaterials(activeCore, activeDesign, req);
-                                    req.sendMessage(ChatColor.YELLOW + "[Kiến Thiết] Mẹo: Hãy nạp thêm block vào Rương Tái Thiết để Thợ Xây tự động tiếp tục.");
-                                }
-                            }
-                            hideInCore(activeCore);
-                            plugin.getCoreManager().registerCore(activeCore.getLocation(), activeCore);
-                            cancel();
-                            return;
+                            // Thiếu nguyên liệu cho khối này: Bỏ qua để tìm xây các khối khác trước
+                            currentIndex++;
                         }
                     }
                 } catch (Exception e) {
