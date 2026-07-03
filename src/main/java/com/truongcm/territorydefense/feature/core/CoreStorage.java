@@ -29,6 +29,11 @@ public class CoreStorage {
     private final CoreManager coreManager;
     private final File coresFile;
     private final YamlConfiguration coresConfig;
+    private final Map<UUID, Object> playerLocks = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private Object getPlayerLock(UUID uuid) {
+        return playerLocks.computeIfAbsent(uuid, k -> new Object());
+    }
 
     public CoreStorage(TerritoryDefense plugin, CoreManager coreManager) {
         this.plugin = plugin;
@@ -112,30 +117,36 @@ public class CoreStorage {
         final String configString = config.saveToString();
 
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            try {
-                java.nio.file.Files.writeString(temp.toPath(), configString, java.nio.charset.StandardCharsets.UTF_8);
-                if (temp.exists() && temp.length() > 0) {
-                    if (file.exists() && file.length() > 0) {
-                        try {
-                            java.nio.file.Files.copy(file.toPath(), backup.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                        } catch (IOException e) {
-                            plugin.getLogger().warning("[TD] Khong the tao file sao luu cho " + ownerUUID + ": " + e.getMessage());
+            synchronized (getPlayerLock(ownerUUID)) {
+                try {
+                    File folder = temp.getParentFile();
+                    if (folder != null && !folder.exists()) {
+                        folder.mkdirs();
+                    }
+                    java.nio.file.Files.writeString(temp.toPath(), configString, java.nio.charset.StandardCharsets.UTF_8);
+                    if (temp.exists() && temp.length() > 0) {
+                        if (file.exists() && file.length() > 0) {
+                            try {
+                                java.nio.file.Files.copy(file.toPath(), backup.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            } catch (IOException e) {
+                                plugin.getLogger().warning("[TD] Khong the tao file sao luu cho " + ownerUUID + ": " + e.getMessage());
+                            }
                         }
+                        try {
+                            java.nio.file.Files.move(temp.toPath(), file.toPath(), 
+                                    java.nio.file.StandardCopyOption.REPLACE_EXISTING, 
+                                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                        } catch (IOException e) {
+                            java.nio.file.Files.move(temp.toPath(), file.toPath(), 
+                                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        }
+                    } else {
+                        plugin.getLogger().severe("[TD] Khong the luu file cho " + ownerUUID + " vi file tam rong hoac loi!");
                     }
-                    try {
-                        java.nio.file.Files.move(temp.toPath(), file.toPath(), 
-                                java.nio.file.StandardCopyOption.REPLACE_EXISTING, 
-                                java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-                    } catch (IOException e) {
-                        java.nio.file.Files.move(temp.toPath(), file.toPath(), 
-                                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                    }
-                } else {
-                    plugin.getLogger().severe("[TD] Khong the luu file cho " + ownerUUID + " vi file tam rong hoac loi!");
+                } catch (Exception e) {
+                    plugin.getLogger().severe("[TD] Loi khi luu bat dong bo du lieu cho " + ownerUUID + ": " + e.getMessage());
+                    e.printStackTrace();
                 }
-            } catch (Exception e) {
-                plugin.getLogger().severe("[TD] Loi khi luu bat dong bo du lieu cho " + ownerUUID + ": " + e.getMessage());
-                e.printStackTrace();
             }
         });
     }
