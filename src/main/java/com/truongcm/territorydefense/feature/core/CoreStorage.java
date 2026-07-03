@@ -30,9 +30,15 @@ public class CoreStorage {
     private final File coresFile;
     private final YamlConfiguration coresConfig;
     private final Map<UUID, Object> playerLocks = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<UUID, YamlConfiguration> configCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     private Object getPlayerLock(UUID uuid) {
         return playerLocks.computeIfAbsent(uuid, k -> new Object());
+    }
+
+    public void invalidateCache(UUID ownerUUID) {
+        configCache.remove(ownerUUID);
+        playerLocks.remove(ownerUUID);
     }
 
     public CoreStorage(TerritoryDefense plugin, CoreManager coreManager) {
@@ -80,6 +86,10 @@ public class CoreStorage {
     }
 
     public YamlConfiguration loadPlayerConfig(UUID ownerUUID) {
+        if (configCache.containsKey(ownerUUID)) {
+            return configCache.get(ownerUUID);
+        }
+
         File file = getPlayerFile(ownerUUID);
         File backup = getPlayerBackupFile(ownerUUID);
         YamlConfiguration config = new YamlConfiguration();
@@ -90,6 +100,7 @@ public class CoreStorage {
                 if (config.getKeys(false).isEmpty() && file.length() > 20) {
                     throw new Exception("Config has size but parsed 0 keys (corrupted)");
                 }
+                configCache.put(ownerUUID, config);
                 return config;
             } catch (Exception e) {
                 plugin.getLogger().severe("[TD] Tep du lieu cua nguoi choi " + ownerUUID + " bi loi! Dang co gang khoi phuc tu file sao luu...");
@@ -98,6 +109,7 @@ public class CoreStorage {
                         config.load(backup);
                         java.nio.file.Files.copy(backup.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                         plugin.getLogger().info("[TD] Khoi phuc thanh cong du lieu tu file .bak cua " + ownerUUID);
+                        configCache.put(ownerUUID, config);
                         return config;
                     } catch (Exception ex) {
                         plugin.getLogger().severe("[TD] Khoi phuc tu .bak that bai cho " + ownerUUID + ": " + ex.getMessage());
@@ -105,10 +117,12 @@ public class CoreStorage {
                 }
             }
         }
+        configCache.put(ownerUUID, config);
         return config;
     }
 
     public void savePlayerConfig(UUID ownerUUID, YamlConfiguration config) {
+        configCache.put(ownerUUID, config);
         File file = getPlayerFile(ownerUUID);
         File temp = getPlayerTempFile(ownerUUID);
         File backup = getPlayerBackupFile(ownerUUID);

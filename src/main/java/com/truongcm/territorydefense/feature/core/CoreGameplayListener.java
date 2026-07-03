@@ -648,6 +648,13 @@ public class CoreGameplayListener implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerQuit(org.bukkit.event.player.PlayerQuitEvent event) {
+        if (plugin.getCoreStorage() != null) {
+            plugin.getCoreStorage().invalidateCache(event.getPlayer().getUniqueId());
+        }
+    }
+
     private boolean isTowerMaterial(Material mat) {
         return mat == Material.SKELETON_SKULL || mat == Material.SKELETON_WALL_SKULL
                 || mat == Material.CREEPER_HEAD || mat == Material.CREEPER_WALL_HEAD
