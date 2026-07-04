@@ -349,6 +349,13 @@ public class NPCBuilder {
                         }
 
                         TerritoryCore.BlockSnapshot snap = activeDesign.get(currentIndex);
+                        
+                        // Bỏ qua nếu là vị trí của Lõi (0, 0, 0) để tránh đè lên/lắp khối Conduit của Lõi
+                        if (snap.relX == 0 && snap.relY == 0 && snap.relZ == 0) {
+                            currentIndex++;
+                            continue;
+                        }
+
                         Location blockLoc = activeCore.getLocation().clone().add(snap.relX, snap.relY, snap.relZ);
                         Block block = blockLoc.getBlock();
                         Material targetMat = matchCache.computeIfAbsent(snap.material, Material::matchMaterial);
@@ -476,6 +483,11 @@ public class NPCBuilder {
         Map<String, Material> matchCache = new HashMap<>();
 
         for (TerritoryCore.BlockSnapshot snap : design) {
+            // Bỏ qua nếu là vị trí của Lõi (0, 0, 0)
+            if (snap.relX == 0 && snap.relY == 0 && snap.relZ == 0) {
+                continue;
+            }
+
             Location blockLoc = core.getLocation().clone().add(snap.relX, snap.relY, snap.relZ);
             Block block = blockLoc.getBlock();
             
