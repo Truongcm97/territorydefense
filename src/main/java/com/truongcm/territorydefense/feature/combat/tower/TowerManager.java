@@ -514,7 +514,7 @@ public class TowerManager extends BukkitRunnable implements Listener {
             final File tempFile = new File(playerDir, "towers.yml.tmp");
             final File backupFile = new File(playerDir, "towers.yml.bak");
 
-            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            Runnable saveRunnable = () -> {
                 synchronized (ownerUUID.toString().intern()) {
                     try {
                         File parent = tempFile.getParentFile();
@@ -538,10 +538,16 @@ public class TowerManager extends BukkitRunnable implements Listener {
                             }
                         }
                     } catch (Exception e) {
-                        plugin.getLogger().severe("[TD] Loi khi luu bat dong bo du lieu thap cho " + ownerUUID + ": " + e.getMessage());
+                        plugin.getLogger().severe("[TD] Loi khi luu du lieu thap cho " + ownerUUID + ": " + e.getMessage());
                     }
                 }
-            });
+            };
+
+            if (!plugin.isEnabled()) {
+                saveRunnable.run();
+            } else {
+                Bukkit.getScheduler().runTaskAsynchronously(plugin, saveRunnable);
+            }
         }
     }
 

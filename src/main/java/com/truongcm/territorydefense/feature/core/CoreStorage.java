@@ -130,7 +130,7 @@ public class CoreStorage {
         // Serialize to String on the main thread to ensure thread safety
         final String configString = config.saveToString();
 
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+        Runnable saveRunnable = () -> {
             synchronized (getPlayerLock(ownerUUID)) {
                 try {
                     File folder = temp.getParentFile();
@@ -158,11 +158,17 @@ public class CoreStorage {
                         plugin.getLogger().severe("[TD] Khong the luu file cho " + ownerUUID + " vi file tam rong hoac loi!");
                     }
                 } catch (Exception e) {
-                    plugin.getLogger().severe("[TD] Loi khi luu bat dong bo du lieu cho " + ownerUUID + ": " + e.getMessage());
+                    plugin.getLogger().severe("[TD] Loi khi luu du lieu cho " + ownerUUID + ": " + e.getMessage());
                     e.printStackTrace();
                 }
             }
-        });
+        };
+
+        if (!plugin.isEnabled()) {
+            saveRunnable.run();
+        } else {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, saveRunnable);
+        }
     }
 
     public void saveCoreToConfig(YamlConfiguration config, TerritoryCore core) {
@@ -199,9 +205,14 @@ public class CoreStorage {
                 List<TerritoryCore.BlockSnapshot> slotDesign = core.getBlueprintSlot(s);
                 final int finalS = s;
                 final List<TerritoryCore.BlockSnapshot> copy = new java.util.ArrayList<>(slotDesign);
-                org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                Runnable bpRunnable = () -> {
                     saveBlueprintBinary(core.getOwnerUUID(), core.getCoreId(), finalS, copy);
-                });
+                };
+                if (!plugin.isEnabled()) {
+                    bpRunnable.run();
+                } else {
+                    org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(plugin, bpRunnable);
+                }
             }
             config.set(path + ".blueprint_slot_bought_" + s, core.getBlueprintSlotsBought().get(s));
             config.set(path + ".blueprint_name_" + s, core.getBlueprintNames().get(s));
