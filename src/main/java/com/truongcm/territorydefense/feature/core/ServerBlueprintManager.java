@@ -329,20 +329,37 @@ public class ServerBlueprintManager {
     }
 
     public List<TerritoryCore.BlockSnapshot> loadLitematicFormat(File file) throws IOException {
-        List<TerritoryCore.BlockSnapshot> snapshots = new ArrayList<>();
-        if (!file.exists()) return snapshots;
+        try {
+            List<TerritoryCore.BlockSnapshot> snapshots = new ArrayList<>();
+            if (!file.exists()) return snapshots;
 
-        try (java.io.DataInputStream dis = new java.io.DataInputStream(new java.util.zip.GZIPInputStream(new java.io.FileInputStream(file)))) {
+            java.util.Map<String, Object> root = null;
+            // Thử mở tệp dưới dạng nén GZIP trước
+            try (java.io.DataInputStream dis = new java.io.DataInputStream(new java.util.zip.GZIPInputStream(new java.io.FileInputStream(file)))) {
             byte rootType = dis.readByte();
-            if (rootType != 10) { // Must be COMPOUND
-                throw new java.io.IOException("Root tag is not NBT Compound");
+            if (rootType == 10) { // COMPOUND
+                dis.readUTF(); // Skip root tag name
+                root = parseNbtCompound(dis);
             }
-            dis.readUTF(); // Skip root tag name
-            java.util.Map<String, Object> root = parseNbtCompound(dis);
+        } catch (java.util.zip.ZipException e) {
+            // Fallback: Một số file litematic không được nén GZIP mà là file NBT thô không nén
+            try (java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.BufferedInputStream(new java.io.FileInputStream(file)))) {
+                byte rootType = dis.readByte();
+                if (rootType != 10) {
+                    throw new java.io.IOException("Root tag is not NBT Compound (RAW format): " + rootType);
+                }
+                dis.readUTF(); // Skip root tag name
+                root = parseNbtCompound(dis);
+            }
+        }
 
-            if (!root.containsKey("Regions")) {
-                throw new java.io.IOException("Invalid Litematic file: missing Regions tag");
-            }
+        if (root == null) {
+            throw new java.io.IOException("Failed to parse NBT root Compound from " + file.getName());
+        }
+
+        if (!root.containsKey("Regions")) {
+            throw new java.io.IOException("Invalid Litematic file: missing Regions tag");
+        }
 
             java.util.Map<String, Object> regions = (java.util.Map<String, Object>) root.get("Regions");
             for (java.util.Map.Entry<String, Object> regionEntry : regions.entrySet()) {
