@@ -64,6 +64,10 @@ public class AllyCommands implements CommandExecutor {
                 handleInvitePlayer(player, args[1]);
                 break;
 
+            case "accept":
+                handleAcceptInvite(player);
+                break;
+
             case "kick":
                 if (args.length < 2) {
                     player.sendMessage(ChatColor.RED + "Cú pháp đúng: /ally kick <tên_người_chơi>");
@@ -157,7 +161,7 @@ public class AllyCommands implements CommandExecutor {
 
         Alliance alliance = plugin.getAllianceManager().getAlliance(allyId);
         if (alliance == null || !alliance.getLeader().equals(player.getUniqueId())) {
-            player.sendMessage(ChatColor.RED + "Chỉ có Thử Lĩnh (Leader) mới có quyền mời thành viên mới!");
+            player.sendMessage(ChatColor.RED + "Chỉ có Thủ Lĩnh (Leader) mới có quyền mời thành viên mới!");
             return;
         }
 
@@ -173,9 +177,18 @@ public class AllyCommands implements CommandExecutor {
             return;
         }
 
-        plugin.getAllianceManager().joinAlliance(allyId, target.getUniqueId());
-        player.sendMessage(ChatColor.GREEN + "Đã mời và thêm " + target.getName() + " thành công vào Liên minh.");
-        target.sendMessage(ChatColor.GREEN + "Bạn đã được nhận vào Liên minh: " + ChatColor.YELLOW + alliance.getName());
+        plugin.getAllianceManager().sendInvite(player, target);
+        player.sendMessage(ChatColor.GREEN + "Đã gửi lời mời tham gia Liên minh tới " + target.getName() + ".");
+    }
+
+    private void handleAcceptInvite(Player player) {
+        String targetAlly = plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId());
+        if (targetAlly != null) {
+            player.sendMessage(ChatColor.RED + "Bạn đã ở trong một Liên minh rồi!");
+            return;
+        }
+
+        plugin.getAllianceManager().acceptInvite(player);
     }
 
     private void handleKickPlayer(Player player, String targetName) {
@@ -279,6 +292,7 @@ public class AllyCommands implements CommandExecutor {
             return;
         }
 
+        // Thông báo cho tất cả thành viên trước khi giải tán
         String notifyMsg = ChatColor.RED + "[Ally] Liên Minh " + ChatColor.YELLOW + alliance.getName() + ChatColor.RED + " đã bị giải tán bởi Thủ Lĩnh.";
         for (UUID mUUID : alliance.getMembers()) {
             Player member = Bukkit.getPlayer(mUUID);
@@ -287,53 +301,10 @@ public class AllyCommands implements CommandExecutor {
             }
         }
 
-        boolean reflectionSuccess = false;
-        Object manager = plugin.getAllianceManager();
-        String[] potentialDisbandMethods = {"disbandAlliance", "deleteAlliance", "disband", "removeAlliance", "destroyAlliance"};
-
-        for (String methodName : potentialDisbandMethods) {
-            try {
-                java.lang.reflect.Method m = manager.getClass().getDeclaredMethod(methodName, String.class);
-                m.setAccessible(true);
-                m.invoke(manager, allyId);
-                reflectionSuccess = true;
-                break;
-            } catch (Exception e1) {
-                try {
-                    java.lang.reflect.Method m = manager.getClass().getDeclaredMethod(methodName, Alliance.class);
-                    m.setAccessible(true);
-                    m.invoke(manager, alliance);
-                    reflectionSuccess = true;
-                    break;
-                } catch (Exception e2) {
-                    try {
-                        java.lang.reflect.Method m = manager.getClass().getDeclaredMethod(methodName, UUID.class);
-                        m.setAccessible(true);
-                        m.invoke(manager, player.getUniqueId());
-                        reflectionSuccess = true;
-                        break;
-                    } catch (Exception ignored) {}
-                }
-            }
-        }
-
-        if (!reflectionSuccess) {
-            try {
-                List<UUID> currentMembers = new ArrayList<>(alliance.getMembers());
-                for (UUID memberUUID : currentMembers) {
-                    plugin.getAllianceManager().leaveAlliance(memberUUID);
-                }
-                reflectionSuccess = true;
-                player.sendMessage(ChatColor.GREEN + "[Liên Minh] Giải toán toàn bang thành công bằng phương thức dọn dẹp thành viên thủ công.");
-            } catch (Exception e) {
-                player.sendMessage(ChatColor.RED + "Lỗi khi dọn dẹp bang hội: " + e.getMessage());
-            }
-        }
-
-        if (reflectionSuccess) {
-            player.sendMessage(ChatColor.GREEN + "Giải tán Liên Minh thành công!");
-            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 0.8f, 1.2f);
-        }
+        // Giải tán trực tiếp
+        plugin.getAllianceManager().disbandAlliance(allyId);
+        player.sendMessage(ChatColor.GREEN + "Giải tán Liên Minh thành công!");
+        player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 0.8f, 1.2f);
     }
 
     /**
@@ -577,6 +548,7 @@ public class AllyCommands implements CommandExecutor {
         player.sendMessage(ChatColor.YELLOW + "/ally : " + ChatColor.WHITE + "Mở GUI Quản trị bang hội.");
         player.sendMessage(ChatColor.YELLOW + "/ally create <tên> : " + ChatColor.WHITE + "Thành lập Liên Minh (Phí: 50k Xu).");
         player.sendMessage(ChatColor.YELLOW + "/ally invite <tên> : " + ChatColor.WHITE + "Mời thành viên mới (Chỉ Leader).");
+        player.sendMessage(ChatColor.YELLOW + "/ally accept : " + ChatColor.WHITE + "Chấp nhận lời mời tham gia Liên Minh.");
         player.sendMessage(ChatColor.YELLOW + "/ally kick <tên> : " + ChatColor.WHITE + "Trục xuất thành viên (Chỉ Leader).");
         player.sendMessage(ChatColor.YELLOW + "/ally chat <tin> : " + ChatColor.WHITE + "Trò chuyện kênh chat mật nội bộ bang.");
         player.sendMessage(ChatColor.YELLOW + "/ally chest : " + ChatColor.WHITE + "Mở hòm đồ chung ServerChest.");

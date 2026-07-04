@@ -31,7 +31,8 @@ public class CoreManager {
 
     private final TerritoryDefense plugin;
     
-    // Package-private maps để CoreStorage và CoreGameplayListener có thể truy cập hiệu năng cao trực tiếp
+    // Package-private: CHỈ dành cho CoreStorage (internal storage layer, cùng package).
+    // Tất cả các class khác PHẢI dùng public API: getAllActiveCores(), getCoreAt(), registerCore()...
     final Map<Location, TerritoryCore> activeCores = new ConcurrentHashMap<>();
     final Map<UUID, Integer> coreShards = new ConcurrentHashMap<>();
     final Map<UUID, Long> corePeaceCooldowns = new ConcurrentHashMap<>();
@@ -232,6 +233,14 @@ public class CoreManager {
 
         if (core == null) return false;
 
+        // Triệt để xóa mọi entry khác trong activeCores có cùng coreId hoặc cùng ownerUUID để tránh bất kỳ bóng ma / lãnh thổ ảo nào
+        UUID cid = core.getCoreId();
+        UUID oid = core.getOwnerUUID();
+        activeCores.entrySet().removeIf(entry -> {
+            TerritoryCore c = entry.getValue();
+            return c != null && (c.getCoreId().equals(cid) || (oid != null && oid.equals(c.getOwnerUUID())));
+        });
+
         // Dọn dẹp vệ tinh với try-catch độc lập từng phần
         try {
             removeAssociatedNPCs(core);
@@ -286,13 +295,26 @@ public class CoreManager {
 
         // Xóa khối Conduit ngoài thế giới
         try {
-            Block block = alignedLoc != null ? alignedLoc.getBlock() : core.getLocation().getBlock();
-            if (block != null) {
-                if (!block.getChunk().isLoaded()) {
-                    block.getChunk().load();
+            if (alignedLoc != null) {
+                Block b1 = alignedLoc.getBlock();
+                if (b1 != null) {
+                    if (!b1.getChunk().isLoaded()) {
+                        b1.getChunk().load();
+                    }
+                    if (b1.getType() == Material.CONDUIT) {
+                        b1.setType(Material.AIR);
+                    }
                 }
-                if (block.getType() == Material.CONDUIT) {
-                    block.setType(Material.AIR);
+            }
+            if (core.getLocation() != null) {
+                Block b2 = core.getLocation().getBlock();
+                if (b2 != null) {
+                    if (!b2.getChunk().isLoaded()) {
+                        b2.getChunk().load();
+                    }
+                    if (b2.getType() == Material.CONDUIT) {
+                        b2.setType(Material.AIR);
+                    }
                 }
             }
         } catch (Exception e) {
@@ -409,6 +431,12 @@ public class CoreManager {
     public void saveAllCores() {
         if (plugin.getCoreStorage() != null) {
             plugin.getCoreStorage().saveAllCores();
+        }
+    }
+
+    public void saveDirtyCores() {
+        if (plugin.getCoreStorage() != null) {
+            plugin.getCoreStorage().saveDirtyCores();
         }
     }
 }

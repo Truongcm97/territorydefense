@@ -55,6 +55,10 @@ public final class RaidMobRegistry {
     }
 
     public static double getCoinReward(EntityType type) {
+        double override = com.truongcm.territorydefense.TerritoryDefense.getInstance().getConfig().getDouble("raid-settings.mob-rewards." + type.name(), -1.0);
+        if (override >= 0.0) {
+            return override;
+        }
         RaidMob mob = REGISTRY.get(type);
         return mob != null ? mob.getCoinReward() : 100.0;
     }

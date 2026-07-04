@@ -38,16 +38,10 @@ public class BlueprintListGui extends CustomHolder {
 
     @Override
     public Inventory getInventory() {
-        List<List<TerritoryCore.BlockSnapshot>> slots = core.getBlueprintSlots();
-        List<String> names = core.getBlueprintNames();
-        List<Integer> scanLevels = core.getBlueprintScanLevels();
-        List<Boolean> bought = core.getBlueprintSlotsBought();
-
         // Lọc các bản vẽ không trống
         List<Integer> existingIndices = new ArrayList<>();
-        for (int i = 0; i < slots.size(); i++) {
-            List<TerritoryCore.BlockSnapshot> design = slots.get(i);
-            if (design != null && !design.isEmpty()) {
+        for (int i = 0; i < 54; i++) {
+            if (!core.isBlueprintSlotEmpty(i)) {
                 existingIndices.add(i);
             }
         }
@@ -72,10 +66,10 @@ public class BlueprintListGui extends CustomHolder {
         for (int i = startIdx; i < endIdx; i++) {
             int guiSlot = i - startIdx;
             int originalIndex = existingIndices.get(i);
-            List<TerritoryCore.BlockSnapshot> design = slots.get(originalIndex);
-            String customName = names.get(originalIndex);
-            int scanLvl = scanLevels.get(originalIndex);
-            boolean isBought = bought.get(originalIndex);
+            int blockCount = core.getBlueprintBlockCount(originalIndex);
+            String customName = core.getBlueprintNames().get(originalIndex);
+            int scanLvl = core.getBlueprintScanLevels().get(originalIndex);
+            boolean isBought = core.getBlueprintSlotsBought().get(originalIndex);
 
             List<String> lore = new ArrayList<>();
             lore.add(ChatColor.YELLOW + "Nhấp chuột trái: Xem chi tiết và tiến hành xây dựng.");
@@ -88,7 +82,7 @@ public class BlueprintListGui extends CustomHolder {
             
             lore.add(ChatColor.RED + "Shift-Click / Click phải: XÓA bản vẽ này.");
             lore.add(" ");
-            lore.add(ChatColor.GOLD + "Tổng khối block: " + ChatColor.GREEN + design.size() + " blocks");
+            lore.add(ChatColor.GOLD + "Tổng khối block: " + ChatColor.GREEN + blockCount + " blocks");
 
             String displayName = ChatColor.GREEN + customName + " - Cấp " + scanLvl;
             inv.setItem(guiSlot, createGuiItem(Material.WRITTEN_BOOK, displayName, "USE_SLOT_" + originalIndex, lore.toArray(new String[0])));
@@ -156,9 +150,8 @@ public class BlueprintListGui extends CustomHolder {
 
             if (action.equalsIgnoreCase("CREATE_BLUEPRINT")) {
                 int firstEmptySlot = -1;
-                List<List<TerritoryCore.BlockSnapshot>> slots = core.getBlueprintSlots();
-                for (int i = 0; i < slots.size(); i++) {
-                    if (slots.get(i) == null || slots.get(i).isEmpty()) {
+                for (int i = 0; i < 54; i++) {
+                    if (core.isBlueprintSlotEmpty(i)) {
                         firstEmptySlot = i;
                         break;
                     }
@@ -202,18 +195,39 @@ public class BlueprintListGui extends CustomHolder {
                 // Nhấp chuột trái để xem chi tiết nguyên liệu và xác nhận
                 com.truongcm.territorydefense.feature.logistics.NPCBuilder builder = plugin.getBuilderManager().getOrCreateBuilder(core.getCoreId());
                 if (builder == null) {
-                    player.sendMessage(ChatColor.RED + "Bạn cần thuê Thợ Xây NPC trước!");
-                    return;
-                }
-                List<TerritoryCore.BlockSnapshot> design = core.getBlueprintSlots().get(slotIndex);
-                if (design == null || design.isEmpty()) {
-                    player.sendMessage(ChatColor.RED + "Bản vẽ này đang trống!");
+                    player.sendMessage(ChatColor.RED + "Bạn cần thuê 7Gao trước!");
                     return;
                 }
                 String customName = core.getBlueprintNames().get(slotIndex);
-                player.closeInventory();
-                player.openInventory(new RebuildConfirmGui(plugin, core, design, customName, slotIndex, 0, true).getInventory());
-                player.playSound(player.getLocation(), Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
+                if (core.isBlueprintSlotLoaded(slotIndex)) {
+                    List<TerritoryCore.BlockSnapshot> design = core.getBlueprintSlot(slotIndex);
+                    if (design == null || design.isEmpty()) {
+                        player.sendMessage(ChatColor.RED + "Bản vẽ này đang trống!");
+                        return;
+                    }
+                    player.closeInventory();
+                    player.openInventory(new RebuildConfirmGui(plugin, core, design, customName, slotIndex, 0, true).getInventory());
+                    player.playSound(player.getLocation(), Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
+                } else {
+                    player.closeInventory();
+                    player.sendMessage(ChatColor.YELLOW + "[Kiến Thiết] Đang giải nén dữ liệu '" + customName + "'... Vui lòng đợi trong giây lát.");
+                    player.playSound(player.getLocation(), Sound.BLOCK_BREWING_STAND_BREW, 1.0f, 1.0f);
+
+                    Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                        List<TerritoryCore.BlockSnapshot> design = core.getBlueprintSlot(slotIndex);
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            if (player.isOnline()) {
+                                if (design == null || design.isEmpty()) {
+                                    player.sendMessage(ChatColor.RED + "Bản vẽ này đang trống hoặc lỗi!");
+                                    return;
+                                }
+                                player.openInventory(new RebuildConfirmGui(plugin, core, design, customName, slotIndex, 0, true).getInventory());
+                                player.sendMessage(ChatColor.GREEN + "[Kiến Thiết] Đã giải mã thành công bản vẽ '" + customName + "'!");
+                                player.playSound(player.getLocation(), Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
+                            }
+                        });
+                    });
+                }
             }
         }
     }

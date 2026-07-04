@@ -135,11 +135,11 @@ public class CoreGui extends CustomHolder {
             case 5 -> 25;
             default -> 2;
         };
-        inv.setItem(20, createGuiItem(Material.MUD_BRICKS, ChatColor.GOLD + "Quản Lý & Nâng Cấp Thợ Xây (Cấp " + currentLevel + ")", "OPEN_BUILDER_UPGRADE",
+        inv.setItem(20, createGuiItem(Material.MUD_BRICKS, ChatColor.GOLD + "Quản Lý & Nâng Cấp 7Gao (Cấp " + currentLevel + ")", "OPEN_BUILDER_UPGRADE",
                 ChatColor.GRAY + "Trạng thái: " + (activeBuilder.isRebuilding() ? ChatColor.GREEN + "Đang xây dựng" : ChatColor.YELLOW + "Rảnh rỗi"),
                 ChatColor.GRAY + "Tốc độ xây dựng: " + ChatColor.AQUA + currentSpeed + " block/giây",
                 " ",
-                ChatColor.YELLOW + "➔ Nhấp để mở bảng Nâng cấp & Dừng sửa chữa Thợ xây."
+                ChatColor.YELLOW + "➔ Nhấp để mở bảng Nâng cấp & Dừng sửa chữa 7Gao."
             ));
 
         ItemStack depositHelper = createGuiItem(Material.CHEST, ChatColor.AQUA + "" + ChatColor.BOLD + "Kho Thực Phẩm Lõi (54 Ô)", "OPEN_FOOD_WAREHOUSE",
@@ -149,10 +149,10 @@ public class CoreGui extends CustomHolder {
         );
         inv.setItem(31, depositHelper);
 
-        ItemStack rebuildHelper = createGuiItem(Material.BRICKS, ChatColor.YELLOW + "" + ChatColor.BOLD + "Kho Vật Liệu Tái Thiết (54 Ô)", "OPEN_REBUILD_WAREHOUSE",
-                ChatColor.GRAY + "Bấm vào để mở rương nguyên liệu tái thiết.",
+        ItemStack rebuildHelper = createGuiItem(Material.BRICKS, ChatColor.YELLOW + "" + ChatColor.BOLD + "Kho Vật Liệu Tái Thiết (90 Ô / 2 Trang)", "OPEN_REBUILD_WAREHOUSE",
+                ChatColor.GRAY + "Bấm vào để mở rương nguyên liệu tái thiết phân trang.",
                 ChatColor.GRAY + "Người chơi bỏ các khối block xây dựng vào đây.",
-                ChatColor.GRAY + "NPC Mason sẽ lấy nguyên liệu để xây dựng lãnh thổ."
+                ChatColor.GRAY + "NPC Mason sẽ lấy nguyên liệu từ 2 trang để sửa chữa."
         );
         inv.setItem(29, rebuildHelper);
 
@@ -161,27 +161,9 @@ public class CoreGui extends CustomHolder {
                 ChatColor.GRAY + "Nông dân NPC hiện có của Lõi lãnh thổ."
         ));
 
-        // Nút tính năng Blueprint
-        inv.setItem(38, createGuiItem(Material.PAPER, ChatColor.BLUE + "" + ChatColor.BOLD + "Quản Lý Bản Vẽ Thiết Kế", "OPEN_BLUEPRINTS",
-                ChatColor.GRAY + "Mở giao diện lưu trữ, chọn xây dựng hoặc",
-                ChatColor.GRAY + "xóa tối đa 54 bản thiết kế công trình."
-        ));
-
         inv.setItem(40, createGuiItem(Material.ANVIL, ChatColor.LIGHT_PURPLE + "" + ChatColor.BOLD + "Tái Thiết Lãnh Thổ", "TRIGGER_PRE_RAID_REBUILD",
-                ChatColor.GRAY + "Mở menu lựa chọn bản vẽ để khôi phục",
-                ChatColor.GRAY + "các khối block bị tàn phá (từ ảnh chụp trước Raid",
-                ChatColor.GRAY + "hoặc các bản vẽ lưu trữ của riêng bạn)."
-        ));
-
-        boolean isShared = core.isPublicBlueprintShared();
-        inv.setItem(42, createGuiItem(Material.MAP, ChatColor.GREEN + "" + ChatColor.BOLD + "Chia Sẻ Bản Vẽ Công Khai", "TOGGLE_SHARE_BLUEPRINT",
-                ChatColor.GRAY + "Trạng thái hiện tại: " + (isShared ? ChatColor.GREEN + "ĐANG BẬT" : ChatColor.RED + "ĐANG TẮT"),
-                ChatColor.GRAY + "Cho phép người chơi khác/đồng minh sao chép thiết kế."
-        ));
-
-        inv.setItem(44, createGuiItem(Material.BOOK, ChatColor.GOLD + "" + ChatColor.BOLD + "Cửa Hàng Bản Vẽ Thiết Kế", "OPEN_BLUEPRINT_SHOP",
-                ChatColor.GRAY + "Mở cửa hàng bản vẽ để mua các thiết kế",
-                ChatColor.GRAY + "công trình tuyệt đẹp được chia sẻ bởi người chơi khác."
+                ChatColor.GRAY + "Khôi phục lại toàn bộ các khối block bị tàn phá",
+                ChatColor.GRAY + "dựa trên ảnh chụp tự động trước trận Raid gần nhất."
         ));
     }
 
@@ -435,49 +417,20 @@ public class CoreGui extends CustomHolder {
             }
 
             if (action.equalsIgnoreCase("OPEN_REBUILD_WAREHOUSE")) {
-                player.openInventory(core.getRebuildWarehouse());
+                player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.RebuildWarehouseGui(plugin, core, 0).getInventory());
                 player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
                 return;
             }
 
             if (action.equalsIgnoreCase("OPEN_BUILDER_UPGRADE")) {
-                com.truongcm.territorydefense.feature.logistics.NPCBuilder builder = plugin.getBuilderManager().getOrCreateBuilder(core.getCoreId());
-                player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.BuilderUpgradeGui(plugin, builder, core).getInventory());
-                player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
-                return;
-            }
-
-            if (action.equalsIgnoreCase("OPEN_BLUEPRINTS")) {
-                player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.BlueprintListGui(plugin, core).getInventory());
-                player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
-                return;
-            }
-
-            if (action.equalsIgnoreCase("OPEN_BLUEPRINT_SHOP")) {
-                player.closeInventory();
-                player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.BlueprintShopGui(plugin, core).getInventory());
+                player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.NPCBuilderGui(plugin, core).getInventory());
                 player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
                 return;
             }
 
             if (action.equalsIgnoreCase("TRIGGER_PRE_RAID_REBUILD")) {
-                com.truongcm.territorydefense.feature.logistics.NPCBuilder builder = plugin.getBuilderManager().getActiveBuilders().get(core.getCoreId());
-                if (builder == null) {
-                    player.sendMessage(ChatColor.RED + "Bạn cần thuê Thợ Xây NPC trước!");
-                    return;
-                }
-                player.closeInventory();
-                player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.RebuildSelectGui(plugin, core).getInventory());
+                player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.RebuildConfirmGui(plugin, core, null, "Danh Sách Bản Vẽ", -2, 0, false).getInventory());
                 player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
-                return;
-            }
-
-            if (action.equalsIgnoreCase("TOGGLE_SHARE_BLUEPRINT")) {
-                core.setPublicBlueprintShared(!core.isPublicBlueprintShared());
-                plugin.getCoreManager().registerCore(core.getLocation(), core);
-                player.openInventory(new CoreGui(plugin, core, CoreTab.LOGISTICS).getInventory());
-                player.sendMessage(ChatColor.GREEN + "Đã thay đổi trạng thái chia sẻ bản vẽ sang: " + (core.isPublicBlueprintShared() ? ChatColor.GREEN + "CÔNG KHAI" : ChatColor.RED + "RIÊNG TƯ"));
-                player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.0f);
                 return;
             }
 
@@ -675,12 +628,15 @@ public class CoreGui extends CustomHolder {
 
         Location coreLoc = core.getLocation();
         if (coreLoc != null && coreLoc.getWorld() != null) {
-            int radius = plugin.getCoreManager().getCoreRadius(core) + 15;
-            Collection<Entity> entities = coreLoc.getWorld().getNearbyEntities(coreLoc, radius, 64, radius);
+            int radius = plugin.getCoreManager().getCoreRadius(core) + 150;
+            Collection<Entity> entities = coreLoc.getWorld().getNearbyEntities(coreLoc, radius, 128, radius);
             int removedCount = 0;
             for (Entity entity : entities) {
                 if (entity == null) continue;
-                if (entity.hasMetadata("td_raid_mob") || entity.hasMetadata("td_npc_attacker")) {
+                boolean isRaidMob = entity.hasMetadata("td_raid_mob") || 
+                                    entity.hasMetadata("td_npc_attacker") ||
+                                    (PDCKeys.RAID_MOB_TAG != null && entity.getPersistentDataContainer().has(PDCKeys.RAID_MOB_TAG, PersistentDataType.BYTE));
+                if (isRaidMob) {
                     entity.remove();
                     removedCount++;
                 }
@@ -955,6 +911,14 @@ public class CoreGui extends CustomHolder {
     }
 
     private void handleRetrieveCore(Player player) {
+        // Kiểm tra xem Lõi có thực sự còn tồn tại/hoạt động hay không trước khi xử lý thu hồi (Chống exploit trùng lặp)
+        if (!plugin.getCoreManager().getAllActiveCores().contains(core)) {
+            player.sendMessage(ChatColor.RED + "Lõi Lãnh Thổ này không còn hoạt động hoặc đã được thu hồi trước đó!");
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            player.closeInventory();
+            return;
+        }
+
         if (isRaidActive(core)) {
             player.sendMessage(ChatColor.RED + "Không thể thu hồi Lõi khi đang có đợt Raid tấn công!");
             player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);

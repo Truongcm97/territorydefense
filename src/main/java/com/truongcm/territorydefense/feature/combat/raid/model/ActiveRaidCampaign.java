@@ -76,6 +76,18 @@ public class ActiveRaidCampaign {
             }
         }.runTaskTimer(plugin, 20L, 20L);
 
+        // Vòng lặp định hướng di chuyển quái bay liên tục: Chạy mỗi 5 ticks (4 lần/giây)
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (plugin.getRaidSession() == null || !plugin.getRaidSession().activeCampaigns().containsKey(core.getCoreId())) {
+                    cancel();
+                    return;
+                }
+                tickFlyingMobsMovement();
+            }
+        }.runTaskTimer(plugin, 20L, 5L);
+
         // Vòng lặp cập nhật UI: Chạy mỗi 2 giây (40 ticks)
         new BukkitRunnable() {
             @Override
@@ -205,6 +217,43 @@ public class ActiveRaidCampaign {
                name.equals("BEE") || name.equals("PARROT") || name.equals("PHANTOM") || name.equals("GHAST");
     }
 
+    private void tickFlyingMobsMovement() {
+        synchronized (aliveMobs) {
+            for (Entity entity : aliveMobs) {
+                if (!(entity instanceof org.bukkit.entity.Mob mob) || !mob.isValid()) {
+                    continue;
+                }
+                if (isFlyingMob(mob)) {
+                    Location mobLoc = mob.getLocation();
+                    Location coreLoc = core.getLocation();
+
+                    Player nearestPlayer = null;
+                    double closestPlayerDist = 12.0;
+                    for (Player p : mob.getWorld().getPlayers()) {
+                        if (p.getGameMode() == org.bukkit.GameMode.SURVIVAL || p.getGameMode() == org.bukkit.GameMode.ADVENTURE) {
+                            double dist = p.getLocation().distance(mobLoc);
+                            if (dist < closestPlayerDist) {
+                                closestPlayerDist = dist;
+                                nearestPlayer = p;
+                            }
+                        }
+                    }
+
+                    Location activeTargetLoc = coreLoc;
+                    if (nearestPlayer != null) {
+                        activeTargetLoc = nearestPlayer.getLocation();
+                    }
+
+                    double distanceToActiveTarget = mobLoc.distance(activeTargetLoc);
+                    if (distanceToActiveTarget > 1.5) {
+                        org.bukkit.util.Vector flyDir = activeTargetLoc.toVector().subtract(mobLoc.toVector()).normalize();
+                        mob.setVelocity(flyDir.multiply(0.35D));
+                    }
+                }
+            }
+        }
+    }
+
     private void tickMobAI() {
         List<Entity> invalidMobs = new ArrayList<>();
         synchronized (aliveMobs) {
@@ -250,10 +299,7 @@ public class ActiveRaidCampaign {
                 double distanceToActiveTarget = mobLoc.distance(activeTargetLoc);
 
                 if (isFlying) {
-                    if (distanceToActiveTarget > 1.0) {
-                        org.bukkit.util.Vector flyDir = activeTargetLoc.toVector().subtract(mobLoc.toVector()).normalize();
-                        mob.setVelocity(flyDir.multiply(0.35D));
-                    }
+                    // Di chuyển của quái bay được xử lý riêng ở tickFlyingMobsMovement() tần suất cao hơn (5 ticks) để thắng AI bay tự nhiên
                 } else {
                     long secondCounter = System.currentTimeMillis() / 1000;
                     boolean shouldPathfind = (mob.getEntityId() + secondCounter) % 3 == 0;
@@ -611,6 +657,11 @@ public class ActiveRaidCampaign {
                     maxHealthAttr = mob.getAttribute(org.bukkit.Registry.ATTRIBUTE.get(org.bukkit.NamespacedKey.minecraft("generic.max_health")));
                 } catch (Throwable ignored) {}
             }
+            if (maxHealthAttr == null) {
+                try {
+                    maxHealthAttr = mob.getAttribute(org.bukkit.Registry.ATTRIBUTE.get(org.bukkit.NamespacedKey.minecraft("max_health")));
+                } catch (Throwable ignored) {}
+            }
 
             if (maxHealthAttr != null) {
                 maxHealthAttr.setBaseValue(scaledHp);
@@ -635,6 +686,11 @@ public class ActiveRaidCampaign {
                     maxHealthAttr = mob.getAttribute(org.bukkit.Registry.ATTRIBUTE.get(org.bukkit.NamespacedKey.minecraft("generic.max_health")));
                 } catch (Throwable ignored) {}
             }
+            if (maxHealthAttr == null) {
+                try {
+                    maxHealthAttr = mob.getAttribute(org.bukkit.Registry.ATTRIBUTE.get(org.bukkit.NamespacedKey.minecraft("max_health")));
+                } catch (Throwable ignored) {}
+            }
             if (maxHealthAttr != null) {
                 actualHp = maxHealthAttr.getValue();
             }
@@ -654,6 +710,11 @@ public class ActiveRaidCampaign {
             if (attackDamageAttr == null) {
                 try {
                     attackDamageAttr = mob.getAttribute(org.bukkit.Registry.ATTRIBUTE.get(org.bukkit.NamespacedKey.minecraft("generic.attack_damage")));
+                } catch (Throwable ignored) {}
+            }
+            if (attackDamageAttr == null) {
+                try {
+                    attackDamageAttr = mob.getAttribute(org.bukkit.Registry.ATTRIBUTE.get(org.bukkit.NamespacedKey.minecraft("attack_damage")));
                 } catch (Throwable ignored) {}
             }
 

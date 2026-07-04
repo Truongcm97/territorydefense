@@ -24,6 +24,7 @@ softdepend:
   - ProtocolLib
   - PlayerVaults
   - ServerChest
+  - WorldEdit
 
 # ------------------------------------------------------------------------------
 # ĐĂNG KÝ HỆ THỐNG LỆNH ĐIỀU HÀNH (COMMANDS)

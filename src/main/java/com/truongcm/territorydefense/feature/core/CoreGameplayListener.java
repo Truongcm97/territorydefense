@@ -47,8 +47,6 @@ public class CoreGameplayListener implements Listener {
     public CoreGameplayListener(TerritoryDefense plugin, CoreManager coreManager) {
         this.plugin = plugin;
         this.coreManager = coreManager;
-
-        Bukkit.getScheduler().runTaskLater(plugin, this::wrapTowerPlaceListener, 1L);
     }
 
     private boolean isRaidActive(TerritoryCore core) {
@@ -56,42 +54,6 @@ public class CoreGameplayListener implements Listener {
         return plugin.getRaidSession().isRaidActive(core);
     }
 
-    @EventHandler(priority = EventPriority.HIGH)
-    public void onRaidMobDeath(EntityDeathEvent event) {
-        LivingEntity victim = event.getEntity();
-        if (victim == null) return;
-
-        if (!victim.hasMetadata("td_raid_mob") && !victim.hasMetadata("td_npc_attacker")) {
-            return;
-        }
-
-        Location deathLoc = victim.getLocation();
-        TerritoryCore core = coreManager.getCoreByLocationRange(deathLoc);
-        if (core == null) return;
-
-        int shardAmount = 1;
-        if (victim.hasMetadata("td_elite_boss")) {
-            shardAmount = 25;
-        } else if (victim.getType() == EntityType.RAVAGER || victim.getType() == EntityType.EVOKER) {
-            shardAmount = 3;
-        }
-
-        coreManager.addShards(core.getCoreId(), shardAmount);
-        coreManager.saveAllCores();
-
-        // Tích lũy Shard thu hoạch tự động vào chiến dịch Raid đang diễn ra (nếu có)
-        com.truongcm.territorydefense.feature.combat.raid.model.ActiveRaidCampaign campaign = 
-            plugin.getRaidSession().getActiveRaid(core);
-        if (campaign != null) {
-            campaign.addWaveHarvestedShards(core.getOwnerUUID(), shardAmount);
-        }
-
-        Location coreLoc = core.getLocation();
-        if (coreLoc != null && coreLoc.getWorld() != null) {
-            coreLoc.getWorld().spawnParticle(Particle.PORTAL, deathLoc, 10, 0.2, 0.2, 0.2, 0.1);
-            coreLoc.getWorld().playSound(deathLoc, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.5f, 1.8f);
-        }
-    }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onCoreBreak(BlockBreakEvent event) {
@@ -216,7 +178,7 @@ public class CoreGameplayListener implements Listener {
             }
 
             if (!isAtWar) {
-                player.sendMessage(ChatColor.RED + "[Bảo vệ] Bạn không thể tương tác với các khối hoặc vật phẩm trong vùng lãnh thổ của người khác!");
+                player.sendMessage(ChatColor.RED + "Bạn không thể tương tác với khối trong vùng bảo vệ ranh giới của người khác!");
                 event.setCancelled(true);
             }
         }
@@ -230,119 +192,140 @@ public class CoreGameplayListener implements Listener {
         Player player = event.getPlayer();
         ItemStack item = event.getItemInHand();
 
-        if (item == null || !item.hasItemMeta()) return;
-        if (!item.getItemMeta().getPersistentDataContainer().has(PDCKeys.IS_CORE_ITEM, PersistentDataType.BYTE)) {
-            return;
-        }
-
-        // 1. Kiểm toán giới hạn sở hữu 1 Lõi
-        if (coreManager.getOwnedCoreCount(player.getUniqueId()) >= 1) {
-            player.sendMessage(ChatColor.RED + "Bạn đã sở hữu một lãnh thổ rồi! Hãy thu hồi lõi cũ trước khi lập đất mới.");
-            event.setCancelled(true);
-            return;
-        }
-
-        Location alignedLoc = coreManager.getBlockAlignedLocation(block.getLocation());
-
-        int placedLevel = 1;
-        if (item.hasItemMeta()) {
-            PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
-            if (pdc.has(PDCKeys.CORE_LEVEL, PersistentDataType.INTEGER)) {
-                placedLevel = pdc.get(PDCKeys.CORE_LEVEL, PersistentDataType.INTEGER);
-            }
-        }
-
-        // 2. Thuật toán quét và chống giao thoa ranh giới (AABB Boundary Overlap Checker)
-        int newCoreRadius = switch (placedLevel) {
-            case 1 -> 16;
-            case 2 -> 24;
-            case 3 -> 32;
-            case 4 -> 40;
-            case 5 -> 50;
-            default -> 16;
-        };
-
-        String playerAlly = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId()) : null;
-
-        for (TerritoryCore existingCore : coreManager.activeCores.values()) {
-            Location existingLoc = existingCore.getLocation();
-            if (existingLoc.getWorld() == null || !existingLoc.getWorld().equals(alignedLoc.getWorld())) continue;
-
-            int existingRadius = coreManager.getCoreRadius(existingCore);
-            int distanceX = Math.abs(alignedLoc.getBlockX() - existingLoc.getBlockX());
-            int distanceZ = Math.abs(alignedLoc.getBlockZ() - existingLoc.getBlockZ());
-
-            // Ranh giới bảo vệ không được phép giao nhau hoặc gối chồng lên nhau (trừ khi cùng liên minh)
-            if (distanceX <= (newCoreRadius + existingRadius) && distanceZ <= (newCoreRadius + existingRadius)) {
-                String existingAlly = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(existingCore.getOwnerUUID()) : null;
-                if (playerAlly != null && playerAlly.equals(existingAlly)) {
-                    // Cùng liên minh: Cho phép đặt chồng ranh giới lên nhau để chuẩn bị gộp đất
-                    continue;
-                }
-                player.sendMessage(ChatColor.RED + "Vị trí này quá gần với một Lãnh thổ khác đang tồn tại! Bán kính ranh giới dự kiến bị giao thoa đè lên nhau.");
-                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
-                event.setCancelled(true);
+        // Kiểm tra an toàn đa tay (Main hand và Off hand) cực kỳ mạnh mẽ
+        if (item == null || !item.hasItemMeta() || !item.getItemMeta().getPersistentDataContainer().has(PDCKeys.IS_CORE_ITEM, PersistentDataType.BYTE)) {
+            ItemStack mainHand = player.getInventory().getItemInMainHand();
+            ItemStack offHand = player.getInventory().getItemInOffHand();
+            if (mainHand != null && mainHand.getType() == Material.CONDUIT && mainHand.hasItemMeta() && mainHand.getItemMeta().getPersistentDataContainer().has(PDCKeys.IS_CORE_ITEM, PersistentDataType.BYTE)) {
+                item = mainHand;
+            } else if (offHand != null && offHand.getType() == Material.CONDUIT && offHand.hasItemMeta() && offHand.getItemMeta().getPersistentDataContainer().has(PDCKeys.IS_CORE_ITEM, PersistentDataType.BYTE)) {
+                item = offHand;
+            } else {
                 return;
             }
         }
 
-        UUID savedCoreId = null;
-        if (item.hasItemMeta()) {
-            PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
-            NamespacedKey savedCoreIdKey = new NamespacedKey(plugin, "td_saved_core_id");
-            if (pdc.has(savedCoreIdKey, PersistentDataType.STRING)) {
-                try {
-                    savedCoreId = UUID.fromString(pdc.get(savedCoreIdKey, PersistentDataType.STRING));
-                } catch (Exception ignored) {}
+        try {
+            // 1. Kiểm toán giới hạn sở hữu 1 Lõi
+            if (coreManager.getOwnedCoreCount(player.getUniqueId()) >= 1) {
+                player.sendMessage(ChatColor.RED + "Bạn đã sở hữu một lãnh thổ rồi! Hãy thu hồi lõi cũ trước khi lập đất mới.");
+                event.setCancelled(true);
+                return;
             }
-        }
 
-        CoreStorage storage = plugin.getCoreStorage();
-        if (storage == null) return;
+            Location alignedLoc = coreManager.getBlockAlignedLocation(block.getLocation());
 
-        YamlConfiguration playerConfig = storage.loadPlayerConfig(player.getUniqueId());
-        boolean restored = false;
-
-        if (savedCoreId != null && playerConfig.contains("cores." + savedCoreId.toString())) {
-            String path = "cores." + savedCoreId.toString();
-            playerConfig.set(path + ".world", alignedLoc.getWorld().getName());
-            playerConfig.set(path + ".x", alignedLoc.getBlockX());
-            playerConfig.set(path + ".y", alignedLoc.getBlockY());
-            playerConfig.set(path + ".z", alignedLoc.getBlockZ());
-            
-            if (playerAlly != null) {
-                playerConfig.set(path + ".ally", playerAlly);
-            } else {
-                playerConfig.set(path + ".ally", null);
+            int placedLevel = 1;
+            if (item.hasItemMeta()) {
+                PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
+                if (pdc.has(PDCKeys.CORE_LEVEL, PersistentDataType.INTEGER)) {
+                    placedLevel = pdc.get(PDCKeys.CORE_LEVEL, PersistentDataType.INTEGER);
+                }
             }
-            
-            storage.savePlayerConfig(player.getUniqueId(), playerConfig);
 
-            int[] loadedCount = new int[]{0};
-            storage.loadCoresFromConfig(playerConfig, player.getUniqueId(), loadedCount);
+            // 2. Thuật toán quét và chống giao thoa ranh giới (AABB Boundary Overlap Checker)
+            int newCoreRadius = switch (placedLevel) {
+                case 1 -> 16;
+                case 2 -> 24;
+                case 3 -> 32;
+                case 4 -> 40;
+                case 5 -> 50;
+                default -> 16;
+            };
 
-            TerritoryCore restoredCore = coreManager.activeCores.get(alignedLoc);
-            if (restoredCore != null) {
-                storage.saveCoreToBlock(block, restoredCore);
-                HologramManager.updateCoreHologram(restoredCore);
-                restored = true;
+            String playerAlly = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId()) : null;
+
+            for (TerritoryCore existingCore : coreManager.getAllActiveCores()) {
+                Location existingLoc = existingCore.getLocation();
+                if (existingLoc.getWorld() == null || !existingLoc.getWorld().equals(alignedLoc.getWorld())) continue;
+
+                int existingRadius = coreManager.getCoreRadius(existingCore);
+                int distanceX = Math.abs(alignedLoc.getBlockX() - existingLoc.getBlockX());
+                int distanceZ = Math.abs(alignedLoc.getBlockZ() - existingLoc.getBlockZ());
+
+                // Ranh giới bảo vệ không được phép giao nhau hoặc gối chồng lên nhau (trừ khi cùng liên minh)
+                if (distanceX <= (newCoreRadius + existingRadius) && distanceZ <= (newCoreRadius + existingRadius)) {
+                    String existingAlly = plugin.getAllianceManager() != null ? plugin.getAllianceManager().getPlayerAlliance(existingCore.getOwnerUUID()) : null;
+                    if (playerAlly != null && playerAlly.equals(existingAlly)) {
+                        // Cùng liên minh: Cho phép đặt chồng ranh giới lên nhau để chuẩn bị gộp đất
+                        continue;
+                    }
+                    player.sendMessage(ChatColor.RED + "Vị trí này quá gần với một Lãnh thổ khác đang tồn tại! Bán kính ranh giới dự kiến bị giao thoa đè lên nhau.");
+                    player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                    event.setCancelled(true);
+                    return;
+                }
             }
+
+            UUID savedCoreId = null;
+            if (item.hasItemMeta()) {
+                PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
+                NamespacedKey savedCoreIdKey = new NamespacedKey(plugin, "td_saved_core_id");
+                if (pdc.has(savedCoreIdKey, PersistentDataType.STRING)) {
+                    try {
+                        savedCoreId = UUID.fromString(pdc.get(savedCoreIdKey, PersistentDataType.STRING));
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            CoreStorage storage = plugin.getCoreStorage();
+            if (storage == null) return;
+
+            YamlConfiguration playerConfig = storage.loadPlayerConfig(player.getUniqueId());
+            boolean restored = false;
+
+            if (savedCoreId != null && playerConfig.contains("cores." + savedCoreId.toString())) {
+                String path = "cores." + savedCoreId.toString();
+                playerConfig.set(path + ".world", alignedLoc.getWorld().getName());
+                playerConfig.set(path + ".x", alignedLoc.getBlockX());
+                playerConfig.set(path + ".y", alignedLoc.getBlockY());
+                playerConfig.set(path + ".z", alignedLoc.getBlockZ());
+                
+                if (playerAlly != null) {
+                    playerConfig.set(path + ".ally", playerAlly);
+                } else {
+                    playerConfig.set(path + ".ally", null);
+                }
+                
+                storage.savePlayerConfig(player.getUniqueId(), playerConfig);
+
+                int[] loadedCount = new int[]{0};
+                storage.loadCoresFromConfig(playerConfig, player.getUniqueId(), loadedCount);
+
+                TerritoryCore restoredCore = coreManager.getCoreAt(alignedLoc);
+                if (restoredCore != null) {
+                    // Chạy delayed task để ghi đè dữ liệu lên block state (TileState) sau khi khối thực sự được cập nhật trong world
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        storage.saveCoreToBlock(block, restoredCore);
+                        HologramManager.updateCoreHologram(restoredCore);
+                    });
+                    restored = true;
+                }
+            }
+
+            if (!restored) {
+                UUID newCoreId = savedCoreId != null ? savedCoreId : UUID.randomUUID();
+                TerritoryCore newCore = new TerritoryCore(
+                        newCoreId, alignedLoc, player.getUniqueId(), placedLevel, 100.0, 1000.0, playerAlly
+                );
+                newCore.setFep(newCore.getMaxFepCapacity());
+                newCore.setShield(newCore.getMaxShieldCapacity());
+
+                coreManager.registerCore(alignedLoc, newCore);
+                
+                // Chạy delayed task để tránh lỗi uninitialized block state trong BlockPlaceEvent tick
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    storage.saveCoreToBlock(block, newCore);
+                });
+            }
+
+            player.sendMessage(ChatColor.GREEN + "Chúc mừng! Lãnh thổ của bạn đã được thiết lập thành công.");
+            player.playSound(block.getLocation(), Sound.BLOCK_CONDUIT_ACTIVATE, 1.0f, 1.0f);
+        } catch (Exception e) {
+            plugin.getLogger().severe("Lỗi nghiêm trọng khi đặt lõi lãnh thổ: " + e.getMessage());
+            e.printStackTrace();
+            player.sendMessage(ChatColor.RED + "Đã xảy ra lỗi hệ thống khi thiết lập lãnh thổ! Vui lòng báo cáo Admin.");
         }
-
-        if (!restored) {
-            UUID newCoreId = savedCoreId != null ? savedCoreId : UUID.randomUUID();
-            TerritoryCore newCore = new TerritoryCore(
-                    newCoreId, alignedLoc, player.getUniqueId(), placedLevel, 100.0, 1000.0, playerAlly
-            );
-            newCore.setFep(newCore.getMaxFepCapacity());
-            newCore.setShield(newCore.getMaxShieldCapacity());
-
-            coreManager.registerCore(alignedLoc, newCore);
-            storage.saveCoreToBlock(block, newCore);
-        }
-
-        player.sendMessage(ChatColor.GREEN + "Chúc mừng! Lãnh thổ của bạn đã được thiết lập thành công.");
-        player.playSound(block.getLocation(), Sound.BLOCK_CONDUIT_ACTIVATE, 1.0f, 1.0f);
     }
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -414,8 +397,7 @@ public class CoreGameplayListener implements Listener {
 
                 if (damage > 0) {
                     double newShield = Math.max(0.0, core.getShield() - damage);
-                    core.setShield(newShield);
-                    coreManager.saveAllCores();
+                    core.setShield(newShield); // setShield() tự markDirty()
                 }
 
                 explodeLoc.getWorld().playSound(explodeLoc, Sound.ITEM_SHIELD_BLOCK, 1.0f, 0.5f);
@@ -477,8 +459,7 @@ public class CoreGameplayListener implements Listener {
 
                 if (damage > 0) {
                     double newShield = Math.max(0.0, core.getShield() - damage);
-                    core.setShield(newShield);
-                    coreManager.saveAllCores();
+                    core.setShield(newShield); // setShield() tự markDirty()
                 }
 
                 explodeLoc.getWorld().playSound(explodeLoc, Sound.ITEM_SHIELD_BLOCK, 1.0f, 0.5f);
@@ -521,8 +502,7 @@ public class CoreGameplayListener implements Listener {
                     double damage = Math.max(10.0, baseDmg * 15.0); // Sát thương đầy đủ dựa vào độ cứng block
                     
                     double newShield = Math.max(0.0, core.getShield() - damage);
-                    core.setShield(newShield);
-                    coreManager.saveAllCores();
+                    core.setShield(newShield); // setShield() tự markDirty()
                     
                     event.setCancelled(true); // Ngăn chặn quái phá block
                     loc.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, loc.clone().add(0.5, 0.5, 0.5), 3, 0.2, 0.2, 0.2, 0.05);
@@ -589,8 +569,7 @@ public class CoreGameplayListener implements Listener {
 
                 // Khấu trừ sát thương vào Khiên Lõi
                 double newShield = Math.max(0.0, core.getShield() - rawDamage);
-                core.setShield(newShield);
-                coreManager.saveAllCores();
+                core.setShield(newShield); // setShield() tự markDirty()
 
                 // Triệt tiêu sát thương thực tế lên Player/NPC (giảm về 0.0)
                 event.setDamage(0.0);
@@ -612,56 +591,11 @@ public class CoreGameplayListener implements Listener {
             }
         }
     }
-
-    private void wrapTowerPlaceListener() {
-        try {
-            for (org.bukkit.plugin.RegisteredListener rl : org.bukkit.event.block.BlockPlaceEvent.getHandlerList().getRegisteredListeners()) {
-                if (rl.getPlugin().equals(plugin) && rl.getListener().getClass().getSimpleName().equals("TowerManager")) {
-                    org.bukkit.event.block.BlockPlaceEvent.getHandlerList().unregister(rl);
-                    org.bukkit.event.block.BlockPlaceEvent.getHandlerList().register(new org.bukkit.plugin.RegisteredListener(
-                            rl.getListener(),
-                            (listener, event) -> {
-                                if (event instanceof org.bukkit.event.block.BlockPlaceEvent) {
-                                    org.bukkit.event.block.BlockPlaceEvent pe = (org.bukkit.event.block.BlockPlaceEvent) event;
-                                    ItemStack item = pe.getItemInHand();
-                                    Material mat = pe.getBlockPlaced().getType();
-                                    if (isTowerMaterial(mat)) {
-                                        boolean isTowerItem = item != null && item.hasItemMeta() && (
-                                                item.getItemMeta().getPersistentDataContainer().has(new NamespacedKey(plugin, "td_tower_type"), PersistentDataType.STRING)
-                                                         || item.getItemMeta().getPersistentDataContainer().has(PDCKeys.IS_CORE_ITEM, PersistentDataType.BYTE)
-                                                         || (item.getItemMeta().hasDisplayName() && ChatColor.stripColor(item.getItemMeta().getDisplayName()).startsWith("Tháp"))
-                                        );
-                                        if (!isTowerItem) return;
-                                    }
-                                }
-                                rl.getExecutor().execute(listener, event);
-                             },
-                            rl.getPriority(),
-                            rl.getPlugin(),
-                            rl.isIgnoringCancelled()
-                    ));
-                    plugin.getLogger().info("[TD] Đã kích hoạt màng lọc thông minh cho việc đặt Tháp Canh.");
-                }
-            }
-        } catch (Exception e) {
-            plugin.getLogger().warning("[TD] Không thể tự động bọc bộ đặt tháp: " + e.getMessage());
-        }
-    }
-
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(org.bukkit.event.player.PlayerQuitEvent event) {
         if (plugin.getCoreStorage() != null) {
             plugin.getCoreStorage().invalidateCache(event.getPlayer().getUniqueId());
         }
-    }
-
-    private boolean isTowerMaterial(Material mat) {
-        return mat == Material.SKELETON_SKULL || mat == Material.SKELETON_WALL_SKULL
-                || mat == Material.CREEPER_HEAD || mat == Material.CREEPER_WALL_HEAD
-                || mat == Material.WITHER_SKELETON_SKULL || mat == Material.WITHER_SKELETON_WALL_SKULL
-                || mat == Material.ZOMBIE_HEAD || mat == Material.ZOMBIE_WALL_HEAD
-                || mat == Material.PIGLIN_HEAD || mat == Material.PIGLIN_WALL_HEAD
-                || mat == Material.PLAYER_HEAD || mat == Material.PLAYER_WALL_HEAD
-                || mat == Material.DRAGON_HEAD || mat == Material.DRAGON_WALL_HEAD;
+        com.truongcm.territorydefense.feature.logistics.ui.RebuildConfirmGui.clearPreview(event.getPlayer());
     }
 }

@@ -39,9 +39,38 @@ public class RaidDisplayManager {
     public void cleanup() {
         if (bossBar != null) {
             try {
+                List<Player> players = new ArrayList<>(bossBar.getPlayers());
                 bossBar.removeAll();
+                org.bukkit.scoreboard.ScoreboardManager manager = Bukkit.getScoreboardManager();
+                if (manager != null) {
+                    for (Player player : players) {
+                        if (player.isOnline()) {
+                            player.setScoreboard(manager.getMainScoreboard());
+                        }
+                    }
+                }
             } catch (Exception ignored) {}
         }
+
+        // Đảm bảo dọn dẹp Scoreboard cho cả Chủ lõi và các thành viên liên minh online
+        try {
+            org.bukkit.scoreboard.ScoreboardManager manager = Bukkit.getScoreboardManager();
+            if (manager != null) {
+                Player owner = Bukkit.getPlayer(core.getOwnerUUID());
+                if (owner != null && owner.isOnline()) {
+                    owner.setScoreboard(manager.getMainScoreboard());
+                }
+                if (plugin.getAllianceManager() != null) {
+                    List<UUID> members = plugin.getAllianceManager().getAllianceMembers(core.getAllyId());
+                    for (UUID memberUuid : members) {
+                        Player player = Bukkit.getPlayer(memberUuid);
+                        if (player != null && player.isOnline()) {
+                            player.setScoreboard(manager.getMainScoreboard());
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
     }
 
     public BossBar getBossBar() {

@@ -56,24 +56,24 @@ public class BlueprintShopSaveSlotGui extends CustomHolder {
         // Tạo các slot bản vẽ tương ứng của trang
         int startSlot = page * 45;
         int endSlot = Math.min(startSlot + 45, 54);
-        List<List<TerritoryCore.BlockSnapshot>> slots = buyerCore.getBlueprintSlots();
         List<String> names = buyerCore.getBlueprintNames();
         List<Integer> scanLevels = buyerCore.getBlueprintScanLevels();
 
         for (int i = startSlot; i < endSlot; i++) {
             int guiSlot = i - startSlot;
-            List<TerritoryCore.BlockSnapshot> design = slots.get(i);
+            boolean isEmpty = buyerCore.isBlueprintSlotEmpty(i);
             String customName = names.get(i);
             int scanLvl = scanLevels.get(i);
 
-            if (design == null || design.isEmpty()) {
+            if (isEmpty) {
                 inv.setItem(guiSlot, createGuiItem(Material.GRAY_DYE, ChatColor.GRAY + "Slot thiết kế #" + (i + 1) + " (Trống)", "SAVE_TO_SLOT_" + i,
                         ChatColor.GRAY + "Nhấp chuột để lưu bản vẽ đã mua vào đây."
                 ));
             } else {
+                int blockCount = buyerCore.getBlueprintBlockCount(i);
                 String displayName = ChatColor.YELLOW + "Slot #" + (i + 1) + " - " + customName + " - Cấp " + scanLvl;
                 inv.setItem(guiSlot, createGuiItem(Material.WRITTEN_BOOK, displayName, "SAVE_TO_SLOT_" + i,
-                        ChatColor.GRAY + "Thiết kế hiện tại: " + ChatColor.GOLD + design.size() + " blocks",
+                        ChatColor.GRAY + "Thiết kế hiện tại: " + ChatColor.GOLD + blockCount + " blocks",
                         " ",
                         ChatColor.RED + "⚠ Chú ý: Việc lưu đè sẽ mở Giao diện xác nhận ghi đè!"
                 ));
@@ -143,7 +143,7 @@ public class BlueprintShopSaveSlotGui extends CustomHolder {
                     }
 
                     // Nếu slot đích KHÔNG TRỐNG -> mở GUI xác nhận ghi đè
-                    if (!buyerCore.getBlueprintSlots().get(slotIndex).isEmpty()) {
+                    if (!buyerCore.isBlueprintSlotEmpty(slotIndex)) {
                         player.closeInventory();
                         player.openInventory(new BlueprintOverwriteConfirmGui(plugin, buyerCore, sellerCore, designToSave, price, sellerName, slotIndex).getInventory());
                         player.playSound(player.getLocation(), Sound.BLOCK_BARREL_OPEN, 1.0f, 1.0f);
@@ -155,8 +155,7 @@ public class BlueprintShopSaveSlotGui extends CustomHolder {
                     plugin.getVaultEconomy().depositPlayer(org.bukkit.Bukkit.getOfflinePlayer(sellerCore.getOwnerUUID()), price);
 
                     // Sao chép thiết kế
-                    buyerCore.getBlueprintSlots().get(slotIndex).clear();
-                    buyerCore.getBlueprintSlots().get(slotIndex).addAll(designToSave);
+                    buyerCore.setBlueprintSlot(slotIndex, designToSave);
                     buyerCore.getBlueprintSlotsBought().set(slotIndex, true);
 
                     // Sao chép tên và cấp độ quét

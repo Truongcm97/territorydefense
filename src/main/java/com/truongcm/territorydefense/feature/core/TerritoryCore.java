@@ -24,8 +24,8 @@ public class TerritoryCore {
     // Kho thực phẩm gồm 54 slot để chứa đồ ăn trung chuyển
     private final Inventory foodWarehouse;
 
-    // Kho nguyên liệu tái thiết lãnh thổ gồm 54 slot
-    private final Inventory rebuildWarehouse;
+    // Kho nguyên liệu tái thiết lãnh thổ gồm 90 slot
+    private final RebuildWarehouseStorage rebuildWarehouse;
 
     // Lưu 54 slot thiết kế công trình của Lõi phục vụ tính năng Blueprint
     private final List<List<BlockSnapshot>> blueprintSlots = new java.util.ArrayList<>();
@@ -35,6 +35,9 @@ public class TerritoryCore {
     private final List<Integer> blueprintScanLevels = new java.util.ArrayList<>();
     private final List<Double> blueprintPrices = new java.util.ArrayList<>();
     private final List<Boolean> blueprintSellingStatus = new java.util.ArrayList<>();
+    private final List<Integer> blueprintBlockCounts = new java.util.ArrayList<>();
+    private final boolean[] blueprintSlotsDirty = new boolean[54];
+    private final boolean[] blueprintSlotsLoaded = new boolean[54];
     private int builderLevel = 1;
     private double blueprintPrice = 0.0;
     private int sellingSlotIndex = 0;
@@ -55,6 +58,9 @@ public class TerritoryCore {
     // Thời điểm hết bị vô hiệu hóa (UNIX timestamp ms)
     private long disabledUntil = 0;
 
+    // Dirty flag — đánh dấu core cần được save trong lần tick kế tiếp
+    private volatile boolean dirty = false;
+
 
     public TerritoryCore(UUID coreId, Location location, UUID ownerUUID, int level, double fep, double shield, String allyId) {
         this.coreId = coreId;
@@ -65,7 +71,7 @@ public class TerritoryCore {
         this.shield = shield;
         this.allyId = allyId;
         this.foodWarehouse = Bukkit.createInventory(null, 54, "Kho Thực Phẩm Lõi");
-        this.rebuildWarehouse = Bukkit.createInventory(null, 54, "Kho Nguyên Liệu Tái Thiết");
+        this.rebuildWarehouse = new RebuildWarehouseStorage();
         this.tempHealth = getMaxShieldCapacity();
         this.permanentRaidMultiplier = 1.0;
         this.temporaryRaidMultiplier = 1.0;
@@ -85,6 +91,7 @@ public class TerritoryCore {
             this.blueprintScanLevels.add(1);
             this.blueprintPrices.add(0.0);
             this.blueprintSellingStatus.add(false);
+            this.blueprintBlockCounts.add(0);
         }
     }
 
@@ -209,6 +216,7 @@ public class TerritoryCore {
     public void setFep(double fep) {
         // Khống chế bình chứa FEP không vượt quá dung tích tối đa của cấp độ hiện tại
         this.fep = Math.max(0.0, Math.min(fep, getMaxFepCapacity()));
+        this.dirty = true;
     }
 
     public double getShield() {
@@ -218,6 +226,7 @@ public class TerritoryCore {
     public void setShield(double shield) {
         // Khống chế giáp ảo không vượt quá mức tối đa
         this.shield = Math.max(0.0, Math.min(shield, getMaxShieldCapacity()));
+        this.dirty = true;
         // Đồng bộ hiển thị hologram
         com.truongcm.territorydefense.feature.core.HologramManager.updateCoreHologram(this);
     }
@@ -267,6 +276,16 @@ public class TerritoryCore {
         com.truongcm.territorydefense.feature.core.HologramManager.updateCoreHologram(this);
     }
 
+    // --- DIRTY FLAG UTILITIES (Batch Save Support) ---
+
+    /** @return true nếu core có thay đổi chưa được lưu xuống disk */
+    public boolean isDirty() { return dirty; }
+
+    /** Đánh dấu core cần được save trong lần batch save kế tiếp */
+    public void markDirty() { this.dirty = true; }
+
+    /** Xóa cờ dirty sau khi đã save thành công */
+    public void clearDirty() { this.dirty = false; }
 
     public double getPermanentRaidMultiplier() {
         return permanentRaidMultiplier;
@@ -335,7 +354,7 @@ public class TerritoryCore {
         return foodWarehouse;
     }
 
-    public Inventory getRebuildWarehouse() {
+    public RebuildWarehouseStorage getRebuildWarehouse() {
         return rebuildWarehouse;
     }
 
@@ -393,6 +412,110 @@ public class TerritoryCore {
 
     public List<Boolean> getBlueprintSellingStatus() {
         return blueprintSellingStatus;
+    }
+
+    public boolean isBlueprintSlotDirty(int slot) {
+        if (slot >= 0 && slot < 54) return blueprintSlotsDirty[slot];
+        return false;
+    }
+
+    public void setBlueprintSlotDirty(int slot, boolean dirty) {
+        if (slot >= 0 && slot < 54) blueprintSlotsDirty[slot] = dirty;
+    }
+
+    public boolean isBlueprintSlotLoaded(int slot) {
+        if (slot >= 0 && slot < 54) return blueprintSlotsLoaded[slot];
+        return false;
+    }
+
+    public void setBlueprintSlotLoaded(int slot, boolean loaded) {
+        if (slot >= 0 && slot < 54) blueprintSlotsLoaded[slot] = loaded;
+    }
+
+    public boolean isBlueprintSlotEmpty(int slotIndex) {
+        if (slotIndex < 0 || slotIndex >= 54) return true;
+        if (blueprintSlotsLoaded[slotIndex]) {
+            return blueprintSlots.get(slotIndex).isEmpty();
+        }
+        try {
+            com.truongcm.territorydefense.TerritoryDefense plugin = com.truongcm.territorydefense.TerritoryDefense.getInstance();
+            if (plugin != null && plugin.getCoreStorage() != null) {
+                java.io.File file = plugin.getCoreStorage().getBlueprintFile(ownerUUID, coreId, slotIndex);
+                return !file.exists();
+            }
+        } catch (Exception ignored) {}
+        return true;
+    }
+
+    public List<BlockSnapshot> getBlueprintSlot(int slotIndex) {
+        if (slotIndex < 0 || slotIndex >= 54) {
+            return new java.util.ArrayList<>();
+        }
+        synchronized (this) {
+            if (!blueprintSlotsLoaded[slotIndex]) {
+                blueprintSlotsLoaded[slotIndex] = true; // Tránh đệ quy
+                try {
+                    com.truongcm.territorydefense.TerritoryDefense plugin = com.truongcm.territorydefense.TerritoryDefense.getInstance();
+                    if (plugin != null && plugin.getCoreStorage() != null) {
+                        List<BlockSnapshot> binList = plugin.getCoreStorage().loadBlueprintBinary(ownerUUID, coreId, slotIndex);
+                        List<BlockSnapshot> slotList = blueprintSlots.get(slotIndex);
+                        slotList.clear();
+                        if (binList != null) {
+                            slotList.addAll(binList);
+                            blueprintBlockCounts.set(slotIndex, binList.size());
+                        } else {
+                            blueprintBlockCounts.set(slotIndex, 0);
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+            return blueprintSlots.get(slotIndex);
+        }
+    }
+
+    public void setBlueprintSlot(int slotIndex, List<BlockSnapshot> blocks) {
+        if (slotIndex < 0 || slotIndex >= 54) return;
+        synchronized (this) {
+            blueprintSlotsLoaded[slotIndex] = true;
+            blueprintSlotsDirty[slotIndex] = true;
+            List<BlockSnapshot> slotList = blueprintSlots.get(slotIndex);
+            slotList.clear();
+            if (blocks != null) {
+                slotList.addAll(blocks);
+                blueprintBlockCounts.set(slotIndex, blocks.size());
+            } else {
+                blueprintBlockCounts.set(slotIndex, 0);
+            }
+        }
+    }
+
+    public List<Integer> getBlueprintBlockCounts() {
+        return this.blueprintBlockCounts;
+    }
+
+    public int getBlueprintBlockCount(int slotIndex) {
+        if (slotIndex < 0 || slotIndex >= 54) return 0;
+        synchronized (this) {
+            if (blueprintSlotsLoaded[slotIndex]) {
+                return blueprintSlots.get(slotIndex).size();
+            }
+            if (isBlueprintSlotEmpty(slotIndex)) {
+                return 0;
+            }
+            int cachedCount = blueprintBlockCounts.get(slotIndex);
+            if (cachedCount > 0) {
+                return cachedCount;
+            }
+            try {
+                com.truongcm.territorydefense.TerritoryDefense plugin = com.truongcm.territorydefense.TerritoryDefense.getInstance();
+                if (plugin != null && plugin.getCoreStorage() != null) {
+                    int size = plugin.getCoreStorage().getBlueprintSizeBinary(ownerUUID, coreId, slotIndex);
+                    blueprintBlockCounts.set(slotIndex, size);
+                    return size;
+                }
+            } catch (Exception ignored) {}
+            return 0;
+        }
     }
 
     public static boolean isSameDesign(List<BlockSnapshot> d1, List<BlockSnapshot> d2) {

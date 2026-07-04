@@ -240,31 +240,23 @@ public class SiegeSession implements Listener {
     }
 
     /**
-     * TIẾN TRÌNH CHIẾM ĐÓNG LÕI CHÍNH (CAPTURE SEQUENCE RUNNABLE):
-     * Khi Giáp ảo sụt giảm về 0, người chơi phe công đứng cạnh Lõi phải thực hiện
-     * tương tác giữ vững vị trí trong vòng 60 giây liên tục để kích hoạt quá trình chiếm đoạt.
+     * TIẾN TRÌNH CHIẾM ĐÓNG LÕI CHÍNH (CAPTURE SEQUENCE RUNNABLE) từ CoreProtectionListener dispatcher.
+     * @return true nếu sự kiện chiếm đóng được xử lý (cần cancel event gốc), false nếu không.
      */
-    @EventHandler
-    public void onCoreCaptureAttempt(PlayerInteractEvent event) {
-        if (event.getClickedBlock() == null || event.getClickedBlock().getType() != org.bukkit.Material.CONDUIT) return;
-
-        Player player = event.getPlayer();
-        TerritoryCore core = plugin.getCoreManager().getCoreAt(event.getClickedBlock().getLocation());
-        if (core == null) return;
+    public boolean handleCaptureAttempt(Player player, TerritoryCore core, org.bukkit.event.block.Action action) {
+        if (action != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK) return false;
 
         String attackerAlly = plugin.getAllianceManager().getPlayerAlliance(player.getUniqueId());
         String defenderAlly = core.getAllyId();
 
-        if (defenderAlly == null || !isAtWar(attackerAlly, defenderAlly)) return;
-
-        event.setCancelled(true); // Ngăn hoạt động mặc định của Lõi Conduit
+        if (defenderAlly == null || !isAtWar(attackerAlly, defenderAlly)) return false;
 
         // 1. Kiểm tra Giáp ảo (Shield HP). Bắt buộc phải đánh sập giáp ảo về 0 mới được chiếm đóng
         if (core.getShield() > 0.0) {
             player.sendMessage(ChatColor.RED + "Lớp giáp ảo của Lõi thủ vẫn đang hoạt động (" +
                     String.format("%.0f", core.getShield()) + " HP). Hãy phá hủy giáp ảo trước!");
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
-            return;
+            return true;
         }
 
         // 2. Chạy màng tường không khí sập trong vòng 10 phút ngay khi giáp về 0 (nếu chưa đăng ký sập)
@@ -278,11 +270,12 @@ public class SiegeSession implements Listener {
         // 3. Nếu người chơi này đã có Tác vụ chiếm đóng đang hoạt động -> Không khởi chạy trùng lặp
         if (activeCaptureTasks.containsKey(player.getUniqueId())) {
             player.sendMessage(ChatColor.YELLOW + "Bạn đang trong tiến trình chiếm đóng Lõi chính...");
-            return;
+            return true;
         }
 
         // Khởi tạo Task chiếm đóng thời gian thực chạy lặp mỗi giây (20 Ticks)
         startCaptureTask(player, core, attackerAlly, defenderAlly);
+        return true;
     }
 
     /**

@@ -242,17 +242,7 @@ public class AllyMainMenuGui extends CustomHolder {
     }
 
     private ItemStack createGuiItem(Material material, String name, String actionTag, String... loreLines) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(name);
-            if (loreLines.length > 0) {
-                meta.setLore(Arrays.asList(loreLines));
-            }
-            meta.getPersistentDataContainer().set(actionKey, PersistentDataType.STRING, actionTag);
-            item.setItemMeta(meta);
-        }
-        return item;
+        return super.createGuiItem(material, name, actionKey, actionTag, loreLines);
     }
 
     public Alliance getAlliance() {

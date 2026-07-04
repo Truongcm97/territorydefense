@@ -197,15 +197,18 @@ public class FEPManager implements Listener {
                 }
             }
             
-            // Cập nhật Hologram hiển thị năng lượng FEP động thời gian thực
-            com.truongcm.territorydefense.feature.core.HologramManager.updateCoreHologram(core);
+            // Cập nhật Hologram — throttle 5 giây để giảm tải khi có nhiều core
+            if (tickCounter % 5 == 0) {
+                com.truongcm.territorydefense.feature.core.HologramManager.updateCoreHologram(core);
+            }
         }
 
-        // Tự động lưu định kỳ toàn bộ dữ liệu Lõi mỗi 60 giây (tương đương 60 ticks của tác vụ này)
+        // Tự động lưu định kỳ toàn bộ dữ liệu Lõi mỗi 60 giây
+        // Chỉ save các core được đánh dấu dirty — tránh I/O storm khi raid
         tickCounter++;
         if (tickCounter >= 60) {
             tickCounter = 0;
-            plugin.getCoreManager().saveAllCores();
+            plugin.getCoreManager().saveDirtyCores();
         }
     }
 
@@ -231,20 +234,11 @@ public class FEPManager implements Listener {
     }
 
     /**
-     * Lắng nghe sự kiện click chuột để người chơi có thể tiếp tế nông sản trực tiếp vào Lõi.
+     * Tiếp tế nông sản trực tiếp vào Lõi từ CoreProtectionListener dispatcher.
+     * @return true nếu sự kiện nạp thành công hoặc bị chặn có thông báo (cần cancel event gốc), false nếu không xử lý (để mở GUI).
      */
-    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
-    public void onCoreInteract(PlayerInteractEvent event) {
-        if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
-        Block block = event.getClickedBlock();
-        if (block == null || block.getType() != Material.CONDUIT) return;
-
-        TerritoryCore core = plugin.getCoreManager().getCoreAt(block.getLocation());
-        if (core == null) return;
-
-        Player player = event.getPlayer();
-        ItemStack handItem = event.getItem();
-        if (handItem == null || !fepValues.containsKey(handItem.getType())) return;
+    public boolean handleFepFeed(Player player, TerritoryCore core, ItemStack handItem) {
+        if (handItem == null || !fepValues.containsKey(handItem.getType())) return false;
 
         // Xác minh quyền sở hữu hoặc liên minh của người tiếp tế
         boolean isOwner = core.getOwnerUUID().equals(player.getUniqueId());
@@ -254,18 +248,14 @@ public class FEPManager implements Listener {
 
         if (!isOwner && !isAlly) {
             player.sendMessage(ChatColor.RED + "Bạn không phải chủ sở hữu hoặc đồng minh của Lõi này để nạp năng lượng!");
-            event.setCancelled(true);
-            return;
+            return true; // Cancelled
         }
 
         // Kiểm tra dung lượng bình chứa FEP hiện tại
         if (core.getFep() >= core.getMaxFepCapacity()) {
             player.sendMessage(ChatColor.YELLOW + "Bình chứa năng lượng FEP của Lõi đã đầy! Tự động chuyển hướng mở giao diện quản lý...");
-            // Không hủy sự kiện, cho phép truyền qua CoreProtectionListener để mở GUI trực tiếp
-            return;
+            return false; // Not handled here, allow dispatcher to open GUI
         }
-
-        event.setCancelled(true); // Chặn hoạt động mặc định của Beacon GUI
 
         Material foodType = handItem.getType();
         double baseFepValue = fepValues.get(foodType);
@@ -307,17 +297,25 @@ public class FEPManager implements Listener {
         );
         player.playSound(core.getLocation(), Sound.ENTITY_GENERIC_EAT, 1.0f, 1.0f);
         player.playSound(core.getLocation(), Sound.BLOCK_BEACON_AMBIENT, 0.8f, 1.5f);
+        return true;
     }
 
     /**
-     * Lắng nghe khi người chơi đóng kho chứa để lưu cấu hình ngay lập tức
+     * Lắng nghe khi người chơi đóng kho chứa để đánh dấu thay đổi (Dirty Flag) thay vì lưu đĩa trực tiếp ngay lập tức
      */
     @EventHandler
     public void onInventoryClose(org.bukkit.event.inventory.InventoryCloseEvent event) {
         org.bukkit.inventory.Inventory inv = event.getInventory();
         for (TerritoryCore core : plugin.getCoreManager().getAllActiveCores()) {
-            if (core.getFoodWarehouse().equals(inv)) {
-                plugin.getCoreManager().registerCore(core.getLocation(), core);
+            boolean isRebuild = false;
+            if (inv.getHolder() instanceof com.truongcm.territorydefense.feature.logistics.ui.RebuildWarehouseGui) {
+                com.truongcm.territorydefense.feature.logistics.ui.RebuildWarehouseGui gui = (com.truongcm.territorydefense.feature.logistics.ui.RebuildWarehouseGui) inv.getHolder();
+                if (gui.getCore().getCoreId().equals(core.getCoreId())) {
+                    isRebuild = true;
+                }
+            }
+            if (core.getFoodWarehouse().equals(inv) || isRebuild) {
+                core.markDirty();
                 break;
             }
         }

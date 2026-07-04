@@ -93,8 +93,7 @@ public class BlueprintOverwriteConfirmGui extends CustomHolder {
                 plugin.getVaultEconomy().depositPlayer(org.bukkit.Bukkit.getOfflinePlayer(sellerCore.getOwnerUUID()), price);
 
                 // Sao chép thiết kế
-                buyerCore.getBlueprintSlots().get(slotIndex).clear();
-                buyerCore.getBlueprintSlots().get(slotIndex).addAll(designToSave);
+                buyerCore.setBlueprintSlot(slotIndex, designToSave);
                 buyerCore.getBlueprintSlotsBought().set(slotIndex, true);
 
                 // Sao chép tên và cấp độ quét

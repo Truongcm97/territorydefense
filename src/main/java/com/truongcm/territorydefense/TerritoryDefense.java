@@ -69,6 +69,7 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
     private SiegeSession siegeSession;
     private MercenaryAI mercenaryAI;
     private BuilderManager builderManager;
+    private com.truongcm.territorydefense.feature.core.ServerBlueprintManager serverBlueprintManager;
 
     @Override
     public void onEnable() {
@@ -107,6 +108,8 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
         this.siegeSession = new SiegeSession(this);
         this.mercenaryAI = new MercenaryAI(this);
         this.builderManager = new BuilderManager(this);
+        this.serverBlueprintManager = new com.truongcm.territorydefense.feature.core.ServerBlueprintManager(this);
+        this.serverBlueprintManager.reload();
 
         // Nạp toàn bộ dữ liệu Lõi cũ từ cores.yml vào RAM duy nhất
         this.coreManager.loadAllCores();
@@ -239,6 +242,23 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
                 fepManager.processFEPSystemTick();
             }
         }.runTaskTimer(this, 100L, 20L);
+
+        // Tác vụ quét khoảng cách để tự động dọn dẹp bản xem trước ảo (mỗi 3 giây = 60 ticks)
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                for (Player player : getServer().getOnlinePlayers()) {
+                    org.bukkit.Location coreLoc = com.truongcm.territorydefense.feature.logistics.ui.RebuildConfirmGui.getPreviewCoreLocation(player.getUniqueId());
+                    if (coreLoc != null) {
+                        if (!player.getWorld().equals(coreLoc.getWorld()) || player.getLocation().distance(coreLoc) > 128.0) {
+                            com.truongcm.territorydefense.feature.logistics.ui.RebuildConfirmGui.clearPreview(player);
+                            player.sendMessage(ChatColor.RED + "[Kiến Thiết] Đã tự động dọn dẹp bản xem trước vì bạn đi cách Lõi quá xa (> 128 block)!");
+                            player.playSound(player.getLocation(), Sound.ENTITY_CHICKEN_EGG, 1.0f, 0.5f);
+                        }
+                    }
+                }
+            }
+        }.runTaskTimer(this, 100L, 60L);
     }
 
     /**
@@ -325,4 +345,5 @@ public class TerritoryDefense extends JavaPlugin implements Listener {
     public SiegeSession getSiegeSession() { return siegeSession; }
     public MercenaryAI getMercenaryAI() { return mercenaryAI; }
     public BuilderManager getBuilderManager() { return builderManager; }
+    public com.truongcm.territorydefense.feature.core.ServerBlueprintManager getServerBlueprintManager() { return serverBlueprintManager; }
 }

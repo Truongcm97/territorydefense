@@ -194,29 +194,27 @@ public class CoreStorage {
         config.set(path + ".selling_slot_index", core.getSellingSlotIndex());
         
         for (int s = 0; s < 54; s++) {
-            List<Map<String, Object>> blueprintList = new ArrayList<>();
-            List<TerritoryCore.BlockSnapshot> slotDesign = core.getBlueprintSlots().get(s);
-            if (slotDesign != null) {
-                for (TerritoryCore.BlockSnapshot snap : slotDesign) {
-                    Map<String, Object> map = new HashMap<>();
-                    map.put("relX", snap.relX);
-                    map.put("relY", snap.relY);
-                    map.put("relZ", snap.relZ);
-                    map.put("material", snap.material);
-                    map.put("blockData", snap.blockData);
-                    blueprintList.add(map);
-                }
+            if (core.isBlueprintSlotDirty(s)) {
+                core.setBlueprintSlotDirty(s, false);
+                List<TerritoryCore.BlockSnapshot> slotDesign = core.getBlueprintSlot(s);
+                final int finalS = s;
+                final List<TerritoryCore.BlockSnapshot> copy = new java.util.ArrayList<>(slotDesign);
+                org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                    saveBlueprintBinary(core.getOwnerUUID(), core.getCoreId(), finalS, copy);
+                });
             }
             config.set(path + ".blueprint_slot_bought_" + s, core.getBlueprintSlotsBought().get(s));
             config.set(path + ".blueprint_name_" + s, core.getBlueprintNames().get(s));
             config.set(path + ".blueprint_scan_level_" + s, core.getBlueprintScanLevels().get(s));
             config.set(path + ".blueprint_price_" + s, core.getBlueprintPrices().get(s));
             config.set(path + ".blueprint_selling_status_" + s, core.getBlueprintSellingStatus().get(s));
-            config.set(path + ".blueprint_slot_" + s, blueprintList);
+            config.set(path + ".blueprint_block_count_" + s, core.getBlueprintBlockCount(s));
         }
 
         for (int i = 0; i < 54; i++) {
             config.set(path + ".warehouse." + i, core.getFoodWarehouse().getItem(i));
+        }
+        for (int i = 0; i < 90; i++) {
             config.set(path + ".rebuild_warehouse." + i, core.getRebuildWarehouse().getItem(i));
         }
     }
@@ -279,7 +277,7 @@ public class CoreStorage {
                 }
                 
                 if (config.contains(path + ".rebuild_warehouse")) {
-                    for (int i = 0; i < 54; i++) {
+                    for (int i = 0; i < 90; i++) {
                         ItemStack item = config.getItemStack(path + ".rebuild_warehouse." + i);
                         if (item != null) {
                             core.getRebuildWarehouse().setItem(i, item);
@@ -299,11 +297,14 @@ public class CoreStorage {
                     core.getBlueprintPrices().set(s, price);
                     boolean selling = config.getBoolean(path + ".blueprint_selling_status_" + s, false);
                     core.getBlueprintSellingStatus().set(s, selling);
+                    int blockCount = config.getInt(path + ".blueprint_block_count_" + s, 0);
+                    core.getBlueprintBlockCounts().set(s, blockCount);
+                    core.setBlueprintSlotLoaded(s, false);
                     if (config.contains(path + ".blueprint_slot_" + s)) {
+                        java.util.List<TerritoryCore.BlockSnapshot> slotList = core.getBlueprintSlot(s);
+                        slotList.clear();
                         java.util.List<?> list = config.getList(path + ".blueprint_slot_" + s);
                         if (list != null) {
-                            java.util.List<TerritoryCore.BlockSnapshot> slotList = core.getBlueprintSlots().get(s);
-                            slotList.clear();
                             for (Object obj : list) {
                                 if (obj instanceof java.util.Map<?, ?> map) {
                                     try {
@@ -316,6 +317,12 @@ public class CoreStorage {
                                     } catch (Exception ignored) {}
                                 }
                             }
+                        }
+                        if (!slotList.isEmpty()) {
+                            // Di trú sang tệp nhị phân nén
+                            saveBlueprintBinary(actualOwnerUUID, coreId, s, slotList);
+                            core.getBlueprintBlockCounts().set(s, slotList.size());
+                            core.markDirty(); // Đánh dấu để save dirty dọn dẹp YAML cũ
                         }
                     }
                 }
@@ -468,6 +475,41 @@ public class CoreStorage {
                 if (block.getType() == Material.CONDUIT) {
                     saveCoreToBlock(block, core);
                 }
+                core.clearDirty();
+            }
+
+            savePlayerConfig(ownerUUID, playerConfig);
+        }
+    }
+
+    public void saveDirtyCores() {
+        java.util.Set<UUID> dirtyOwners = new java.util.HashSet<>();
+        for (TerritoryCore core : coreManager.activeCores.values()) {
+            if (core.isDirty()) {
+                dirtyOwners.add(core.getOwnerUUID());
+            }
+        }
+
+        if (dirtyOwners.isEmpty()) return;
+
+        for (UUID ownerUUID : dirtyOwners) {
+            java.util.List<TerritoryCore> allPlayerCores = new java.util.ArrayList<>();
+            for (TerritoryCore core : coreManager.activeCores.values()) {
+                if (core.getOwnerUUID().equals(ownerUUID)) {
+                    allPlayerCores.add(core);
+                }
+            }
+
+            YamlConfiguration playerConfig = loadPlayerConfig(ownerUUID);
+            playerConfig.set("cores", null);
+
+            for (TerritoryCore core : allPlayerCores) {
+                saveCoreToConfig(playerConfig, core);
+                Block block = core.getLocation().getBlock();
+                if (block.getType() == Material.CONDUIT) {
+                    saveCoreToBlock(block, core);
+                }
+                core.clearDirty();
             }
 
             savePlayerConfig(ownerUUID, playerConfig);
@@ -499,6 +541,266 @@ public class CoreStorage {
             }
             conduit.update(true);
         }
+    }
+
+    public File getBlueprintFile(UUID ownerUUID, UUID coreUUID, int slotIndex) {
+        File blueprintsFolder = new File(getPlayerFolder(ownerUUID), "blueprints");
+        File coreFolder = new File(blueprintsFolder, coreUUID.toString());
+        if (!coreFolder.exists()) {
+            coreFolder.mkdirs();
+        }
+        return new File(coreFolder, "slot_" + slotIndex + ".schem");
+    }
+
+    public File getOldBlueprintFile(UUID ownerUUID, UUID coreUUID, int slotIndex) {
+        File blueprintsFolder = new File(getPlayerFolder(ownerUUID), "blueprints");
+        File coreFolder = new File(blueprintsFolder, coreUUID.toString());
+        return new File(coreFolder, "slot_" + slotIndex + ".dat");
+    }
+
+    public void saveBlueprintBinary(UUID ownerUUID, UUID coreUUID, int slotIndex, List<TerritoryCore.BlockSnapshot> snapshot) {
+        File file = getBlueprintFile(ownerUUID, coreUUID, slotIndex);
+        File oldFile = getOldBlueprintFile(ownerUUID, coreUUID, slotIndex);
+        if (snapshot == null || snapshot.isEmpty()) {
+            if (file.exists()) file.delete();
+            if (oldFile.exists()) oldFile.delete();
+            return;
+        }
+
+        // Tính toán Bounding Box
+        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
+        int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
+        int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+        for (TerritoryCore.BlockSnapshot snap : snapshot) {
+            if (snap.relX < minX) minX = snap.relX;
+            if (snap.relX > maxX) maxX = snap.relX;
+            if (snap.relY < minY) minY = snap.relY;
+            if (snap.relY > maxY) maxY = snap.relY;
+            if (snap.relZ < minZ) minZ = snap.relZ;
+            if (snap.relZ > maxZ) maxZ = snap.relZ;
+        }
+
+        short width = (short) (maxX - minX + 1);
+        short height = (short) (maxY - minY + 1);
+        short length = (short) (maxZ - minZ + 1);
+
+        // Gom nhóm Palette
+        Map<String, Integer> palette = new HashMap<>();
+        List<String> paletteList = new ArrayList<>();
+        // Đảm bảo không khí (air) có ID là 0
+        palette.put("minecraft:air", 0);
+        paletteList.add("minecraft:air");
+
+        int nextId = 1;
+        for (TerritoryCore.BlockSnapshot snap : snapshot) {
+            String material = snap.material != null ? snap.material.toLowerCase() : "air";
+            if (!material.contains(":")) material = "minecraft:" + material;
+            String stateStr = material;
+            if (snap.blockData != null && !snap.blockData.isEmpty()) {
+                if (snap.blockData.contains("[")) {
+                    stateStr = snap.blockData.toLowerCase();
+                    if (!stateStr.contains(":")) {
+                        stateStr = "minecraft:" + stateStr;
+                    }
+                } else {
+                    stateStr = material + "[" + snap.blockData.toLowerCase() + "]";
+                }
+            }
+            if (!palette.containsKey(stateStr)) {
+                palette.put(stateStr, nextId);
+                paletteList.add(stateStr);
+                nextId++;
+            }
+        }
+
+        // Tạo mảng BlockData theo thứ tự 3D: (Y * Length + Z) * Width + X
+        int[] blockIds = new int[width * height * length];
+        java.util.Arrays.fill(blockIds, 0);
+
+        for (TerritoryCore.BlockSnapshot snap : snapshot) {
+            String material = snap.material != null ? snap.material.toLowerCase() : "air";
+            if (!material.contains(":")) material = "minecraft:" + material;
+            String stateStr = material;
+            if (snap.blockData != null && !snap.blockData.isEmpty()) {
+                if (snap.blockData.contains("[")) {
+                    stateStr = snap.blockData.toLowerCase();
+                    if (!stateStr.contains(":")) {
+                        stateStr = "minecraft:" + stateStr;
+                    }
+                } else {
+                    stateStr = material + "[" + snap.blockData.toLowerCase() + "]";
+                }
+            }
+            int id = palette.getOrDefault(stateStr, 0);
+            int rx = snap.relX - minX;
+            int ry = snap.relY - minY;
+            int rz = snap.relZ - minZ;
+            int index = (ry * length + rz) * width + rx;
+            if (index >= 0 && index < blockIds.length) {
+                blockIds[index] = id;
+            }
+        }
+
+        // Mã hóa VarInt cho BlockData
+        java.io.ByteArrayOutputStream dataBytes = new java.io.ByteArrayOutputStream();
+        for (int id : blockIds) {
+            writeVarInt(dataBytes, id);
+        }
+        byte[] blockData = dataBytes.toByteArray();
+
+        // Ghi file NBT GZIP
+        try (java.io.DataOutputStream out = new java.io.DataOutputStream(new java.util.zip.GZIPOutputStream(new java.io.FileOutputStream(file)))) {
+            // Root Compound (Tag ID = 10, Name = "Schematic")
+            out.writeByte(10);
+            out.writeUTF("Schematic");
+
+            // Ghi Short Width (Tag ID = 2)
+            out.writeByte(2);
+            out.writeUTF("Width");
+            out.writeShort(width);
+
+            // Ghi Short Height (Tag ID = 2)
+            out.writeByte(2);
+            out.writeUTF("Height");
+            out.writeShort(height);
+
+            // Ghi Short Length (Tag ID = 2)
+            out.writeByte(2);
+            out.writeUTF("Length");
+            out.writeShort(length);
+
+            // Ghi IntArray Offset (Tag ID = 11)
+            out.writeByte(11);
+            out.writeUTF("Offset");
+            out.writeInt(3); // size of int array
+            out.writeInt(minX);
+            out.writeInt(minY);
+            out.writeInt(minZ);
+
+            // Ghi ByteArray BlockData (Tag ID = 7)
+            out.writeByte(7);
+            out.writeUTF("BlockData");
+            out.writeInt(blockData.length);
+            out.write(blockData);
+
+            // Ghi Compound Palette (Tag ID = 10)
+            out.writeByte(10);
+            out.writeUTF("Palette");
+            for (int i = 0; i < paletteList.size(); i++) {
+                String stateStr = paletteList.get(i);
+                out.writeByte(3); // Int (Tag ID = 3)
+                out.writeUTF(stateStr);
+                out.writeInt(i);
+            }
+            // End Palette Compound
+            out.writeByte(0);
+
+            // End Root Compound
+            out.writeByte(0);
+
+            // Xóa file .dat cũ để dọn dẹp dung lượng
+            if (oldFile.exists()) {
+                oldFile.delete();
+            }
+        } catch (IOException e) {
+            plugin.getLogger().severe("Error saving blueprint schematic for " + ownerUUID + " / " + coreUUID + " / slot " + slotIndex + ": " + e.getMessage());
+        }
+    }
+
+    private void writeVarInt(java.io.ByteArrayOutputStream out, int value) {
+        while ((value & 0xFFFFFF80) != 0L) {
+            out.write((value & 0x7F) | 0x80);
+            value >>>= 7;
+        }
+        out.write(value & 0x7F);
+    }
+
+    public File getLitematicBlueprintFile(UUID ownerUUID, UUID coreUUID, int slotIndex) {
+        File blueprintsFolder = new File(getPlayerFolder(ownerUUID), "blueprints");
+        File coreFolder = new File(blueprintsFolder, coreUUID.toString());
+        return new File(coreFolder, "slot_" + slotIndex + ".litematic");
+    }
+
+    public List<TerritoryCore.BlockSnapshot> loadBlueprintBinary(UUID ownerUUID, UUID coreUUID, int slotIndex) {
+        File file = getBlueprintFile(ownerUUID, coreUUID, slotIndex);
+        if (!file.exists()) {
+            // Kiểm tra tệp .litematic trước
+            File litematicFile = getLitematicBlueprintFile(ownerUUID, coreUUID, slotIndex);
+            if (litematicFile.exists()) {
+                try {
+                    List<TerritoryCore.BlockSnapshot> blocks = plugin.getServerBlueprintManager().loadLitematicFormat(litematicFile);
+                    if (blocks != null && !blocks.isEmpty()) {
+                        // Tự động di trú sang tệp .schem lấy Core làm tâm đối xứng để tối ưu hiệu suất nạp các lần tiếp theo
+                        saveBlueprintBinary(ownerUUID, coreUUID, slotIndex, blocks);
+                        plugin.getLogger().info("[TD] Da tu dong di tru thanh cong tẹp litematic slot_" + slotIndex + " sang .schem cho nguoi choi " + ownerUUID);
+                        
+                        // Đổi tên file litematic cũ thành .converted hoặc xóa
+                        File convertedFile = new File(litematicFile.getParentFile(), litematicFile.getName() + ".converted");
+                        if (litematicFile.renameTo(convertedFile)) {
+                            plugin.getLogger().info("[TD] Da luu tru file litematic goc cua nguoi choi tai: " + convertedFile.getName());
+                        } else {
+                            litematicFile.delete();
+                        }
+                        return blocks;
+                    }
+                } catch (Exception e) {
+                    plugin.getLogger().severe("Error parsing/converting litematic blueprint for " + ownerUUID + " / " + coreUUID + " / slot " + slotIndex + ": " + e.getMessage());
+                }
+            }
+
+            File oldFile = getOldBlueprintFile(ownerUUID, coreUUID, slotIndex);
+            if (oldFile.exists()) {
+                return loadOldBlueprintBinary(oldFile);
+            }
+            return new ArrayList<>();
+        }
+
+        try {
+            return plugin.getServerBlueprintManager().loadSchemFormat(file);
+        } catch (Exception e) {
+            plugin.getLogger().severe("Error loading blueprint schematic for " + ownerUUID + " / " + coreUUID + " / slot " + slotIndex + ": " + e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    private List<TerritoryCore.BlockSnapshot> loadOldBlueprintBinary(File file) {
+        List<TerritoryCore.BlockSnapshot> snapshot = new ArrayList<>();
+        try (java.io.DataInputStream in = new java.io.DataInputStream(new java.util.zip.GZIPInputStream(new java.io.FileInputStream(file)))) {
+            int size = in.readInt();
+            for (int i = 0; i < size; i++) {
+                int relX = in.readInt();
+                int relY = in.readInt();
+                int relZ = in.readInt();
+                String material = in.readUTF();
+                String blockData = in.readUTF();
+                snapshot.add(new TerritoryCore.BlockSnapshot(relX, relY, relZ, 
+                    material.isEmpty() ? null : material, 
+                    blockData.isEmpty() ? null : blockData));
+            }
+        } catch (IOException e) {
+            plugin.getLogger().severe("Error loading old blueprint binary from " + file.getName() + ": " + e.getMessage());
+        }
+        return snapshot;
+    }
+
+    public int getBlueprintSizeBinary(UUID ownerUUID, UUID coreUUID, int slotIndex) {
+        File file = getBlueprintFile(ownerUUID, coreUUID, slotIndex);
+        if (!file.exists()) {
+            File litematicFile = getLitematicBlueprintFile(ownerUUID, coreUUID, slotIndex);
+            if (litematicFile.exists()) {
+                return loadBlueprintBinary(ownerUUID, coreUUID, slotIndex).size();
+            }
+            File oldFile = getOldBlueprintFile(ownerUUID, coreUUID, slotIndex);
+            if (oldFile.exists()) {
+                try (java.io.DataInputStream in = new java.io.DataInputStream(new java.util.zip.GZIPInputStream(new java.io.FileInputStream(oldFile)))) {
+                    return in.readInt();
+                } catch (IOException e) {
+                    return 0;
+                }
+            }
+            return 0;
+        }
+        return loadBlueprintBinary(ownerUUID, coreUUID, slotIndex).size();
     }
 
     public void saveCoresConfig() {

@@ -63,6 +63,7 @@ public class SpatialBlueprintScanner {
         }
 
         // Quét qua từng snapshot khối trong bản vẽ thiết kế
+        Map<String, Material> matchCache = new HashMap<>();
         for (TerritoryCore.BlockSnapshot snap : blueprint) {
             // Tính toán vị trí thực tế tuyệt đối trong thế giới game dựa trên độ lệch tương đối (relX, relY, relZ)
             int absX = originLoc.getBlockX() + snap.relX;
@@ -70,7 +71,7 @@ public class SpatialBlueprintScanner {
             int absZ = originLoc.getBlockZ() + snap.relZ;
 
             Block realBlock = world.getBlockAt(absX, absY, absZ);
-            Material targetMat = Material.matchMaterial(snap.material);
+            Material targetMat = matchCache.computeIfAbsent(snap.material, Material::matchMaterial);
             
             if (targetMat == null || targetMat == Material.AIR) {
                 continue; // Bỏ qua nếu vật liệu trong bản vẽ không hợp lệ hoặc là không khí

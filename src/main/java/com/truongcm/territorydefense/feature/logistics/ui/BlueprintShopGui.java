@@ -53,8 +53,8 @@ public class BlueprintShopGui extends CustomHolder {
             for (int s = 0; s < 54; s++) {
                 if (slot >= 45) break;
                 if (targetCore.getBlueprintSellingStatus().get(s)) {
-                    List<TerritoryCore.BlockSnapshot> design = targetCore.getBlueprintSlots().get(s);
-                    if (design == null || design.isEmpty()) continue;
+                    if (targetCore.isBlueprintSlotEmpty(s)) continue;
+                    int blockCount = targetCore.getBlueprintBlockCount(s);
 
                     String customName = targetCore.getBlueprintNames().get(s);
                     int scanLvl = targetCore.getBlueprintScanLevels().get(s);
@@ -67,7 +67,7 @@ public class BlueprintShopGui extends CustomHolder {
                             ChatColor.GRAY + "Người bán: " + ChatColor.GOLD + sellerName,
                             ChatColor.GRAY + "Tên thiết kế: " + ChatColor.LIGHT_PURPLE + customName,
                             ChatColor.GRAY + "Cấp độ quét: " + ChatColor.AQUA + "Cấp " + scanLvl,
-                            ChatColor.GRAY + "Tổng số khối: " + ChatColor.AQUA + design.size() + " blocks",
+                            ChatColor.GRAY + "Tổng số khối: " + ChatColor.AQUA + blockCount + " blocks",
                             ChatColor.GRAY + "Slot nguồn: #" + (s + 1),
                             ChatColor.GRAY + "Giá bán: " + ChatColor.GREEN + String.format("%,.0f", price) + " Xu",
                             " ",
@@ -81,13 +81,7 @@ public class BlueprintShopGui extends CustomHolder {
 
         // Điều hướng
         inv.setItem(45, createGuiItem(Material.ARROW, ChatColor.YELLOW + "Quay lại Lõi", "BACK"));
-        inv.setItem(49, createGuiItem(Material.BOOKSHELF, ChatColor.LIGHT_PURPLE + "" + ChatColor.BOLD + "Bày Bán Bản Vẽ Của Bạn", "OPEN_BLUEPRINT_SELL_SELECTOR",
-                ChatColor.GRAY + "Thiết lập xem bạn muốn bày bán bản vẽ nào",
-                ChatColor.GRAY + "trong số 54 slot bản vẽ đã lưu của bạn.",
-                ChatColor.GRAY + "Hỗ trợ bày bán đồng thời nhiều bản vẽ khác nhau!",
-                " ",
-                ChatColor.YELLOW + "➔ Click để quản lý bày bán!"
-        ));
+        inv.setItem(49, createGuiItem(Material.GRAY_STAINED_GLASS_PANE, " ", "NONE"));
         inv.setItem(53, createGuiItem(Material.BARRIER, ChatColor.RED + "Thoát ra", "CLOSE"));
 
         return inv;
@@ -114,12 +108,6 @@ public class BlueprintShopGui extends CustomHolder {
                 return;
             }
 
-            if (action.equalsIgnoreCase("OPEN_BLUEPRINT_SELL_SELECTOR")) {
-                player.closeInventory();
-                player.openInventory(new BlueprintSelectSellSlotGui(plugin, buyerCore).getInventory());
-                player.playSound(player.getLocation(), Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
-                return;
-            }
 
             if (action.startsWith("BUY_")) {
                 String buyData = action.substring(4);
@@ -139,12 +127,6 @@ public class BlueprintShopGui extends CustomHolder {
                         return;
                     }
 
-                    List<TerritoryCore.BlockSnapshot> design = targetCore.getBlueprintSlots().get(sellingSlotIdx);
-                    if (design == null || design.isEmpty()) {
-                        player.sendMessage(ChatColor.RED + "Bản vẽ thiết kế của người chơi này không còn khả dụng!");
-                        return;
-                    }
-
                     double price = targetCore.getBlueprintPrices().get(sellingSlotIdx);
                     if (plugin.getVaultEconomy().getBalance(player) < price) {
                         player.sendMessage(ChatColor.RED + "Bạn không đủ Xu để mua bản vẽ này! Cần: " + String.format("%,.0f", price) + " Xu.");
@@ -154,10 +136,36 @@ public class BlueprintShopGui extends CustomHolder {
                     String sellerName = Bukkit.getOfflinePlayer(targetCore.getOwnerUUID()).getName();
                     if (sellerName == null) sellerName = "Người chơi ẩn danh";
 
-                    player.closeInventory();
-                    // Chúng ta cần cập nhật BlueprintShopSaveSlotGui để nhận sellingSlotIdx và sao chép chính xác từ đúng slot nguồn
-                    player.openInventory(new BlueprintShopSaveSlotGui(plugin, buyerCore, targetCore, design, price, sellerName, sellingSlotIdx).getInventory());
-                    player.playSound(player.getLocation(), Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
+                    final String finalSellerName = sellerName;
+                    if (targetCore.isBlueprintSlotLoaded(sellingSlotIdx)) {
+                        List<TerritoryCore.BlockSnapshot> design = targetCore.getBlueprintSlot(sellingSlotIdx);
+                        if (design == null || design.isEmpty()) {
+                            player.sendMessage(ChatColor.RED + "Bản vẽ thiết kế của người chơi này không còn khả dụng!");
+                            return;
+                        }
+                        player.closeInventory();
+                        player.openInventory(new BlueprintShopSaveSlotGui(plugin, buyerCore, targetCore, design, price, finalSellerName, sellingSlotIdx).getInventory());
+                        player.playSound(player.getLocation(), Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
+                    } else {
+                        player.closeInventory();
+                        player.sendMessage(ChatColor.YELLOW + "[Kiến Thiết] Đang tải và giải nén dữ liệu bản vẽ... Vui lòng đợi trong giây lát.");
+                        player.playSound(player.getLocation(), Sound.BLOCK_BREWING_STAND_BREW, 1.0f, 1.0f);
+
+                        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                            List<TerritoryCore.BlockSnapshot> design = targetCore.getBlueprintSlot(sellingSlotIdx);
+                            Bukkit.getScheduler().runTask(plugin, () -> {
+                                if (player.isOnline()) {
+                                    if (design == null || design.isEmpty()) {
+                                        player.sendMessage(ChatColor.RED + "Bản vẽ thiết kế không khả dụng hoặc lỗi!");
+                                        return;
+                                    }
+                                    player.openInventory(new BlueprintShopSaveSlotGui(plugin, buyerCore, targetCore, design, price, finalSellerName, sellingSlotIdx).getInventory());
+                                    player.sendMessage(ChatColor.GREEN + "[Kiến Thiết] Đã giải mã thành công bản vẽ!");
+                                    player.playSound(player.getLocation(), Sound.BLOCK_CHEST_OPEN, 1.0f, 1.0f);
+                                }
+                            });
+                        });
+                    }
 
                 } catch (Exception e) {
                     player.sendMessage(ChatColor.RED + "Đã xảy ra lỗi trong quá trình xử lý mua bản vẽ!");

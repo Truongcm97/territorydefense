@@ -76,7 +76,7 @@ public class BlueprintDeleteConfirmGui extends CustomHolder {
 
             if (action.equalsIgnoreCase("CONFIRM")) {
                 player.closeInventory();
-                core.getBlueprintSlots().get(slotIndex).clear();
+                core.setBlueprintSlot(slotIndex, null);
                 core.getBlueprintNames().set(slotIndex, "Bản thiết kế #" + (slotIndex + 1));
                 core.getBlueprintScanLevels().set(slotIndex, 1);
                 // Reset selling status if any
@@ -92,13 +92,13 @@ public class BlueprintDeleteConfirmGui extends CustomHolder {
                 player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 1.0f, 1.0f);
                 
                 // Reopen list GUI
-                player.openInventory(new BlueprintListGui(plugin, core).getInventory());
+                player.openInventory(new RebuildConfirmGui(plugin, core, null, "Danh Sách Bản Vẽ", -2, 0, false).getInventory());
                 return;
             }
 
             if (action.equalsIgnoreCase("CANCEL")) {
                 player.closeInventory();
-                player.openInventory(new BlueprintListGui(plugin, core).getInventory());
+                player.openInventory(new RebuildConfirmGui(plugin, core, null, "Danh Sách Bản Vẽ", -2, 0, false).getInventory());
                 player.playSound(player.getLocation(), Sound.BLOCK_BARREL_CLOSE, 1.0f, 1.0f);
             }
         }

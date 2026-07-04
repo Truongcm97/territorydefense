@@ -46,6 +46,7 @@ public class TerritoryTabCompleter implements TabCompleter {
                 commands.add("rebuildholograms");
                 commands.add("rebuildhlg");
                 commands.add("save");
+                commands.add("admin");
             }
 
             StringUtil.copyPartialMatches(args[0], commands, completions);

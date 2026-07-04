@@ -44,6 +44,18 @@ public class TerritoryCommands implements CommandExecutor {
 
         String subCommand = args[0].toLowerCase();
 
+        // Kiểm tra lệnh Admin mở GUI
+        if (subCommand.equals("admin")) {
+            if (!player.hasPermission("territorydefense.admin")) {
+                player.sendMessage(ChatColor.RED + "Bạn không có quyền sử dụng lệnh này!");
+                return true;
+            }
+            player.closeInventory();
+            player.openInventory(new com.truongcm.territorydefense.feature.web.AdminCoreManagerGui(plugin, com.truongcm.territorydefense.feature.web.AdminCoreManagerGui.AdminTab.MAIN_HUB).getInventory());
+            player.playSound(player.getLocation(), Sound.BLOCK_BARREL_OPEN, 1.0f, 1.0f);
+            return true;
+        }
+
         // Kiểm tra lệnh Reset Starter dành cho Admin
         // ĐÃ NÂNG CẤP: Hỗ trợ khôi phục Lõi lỗi cho cả người chơi đang Offline
         if (subCommand.equals("resetstarter")) {
@@ -339,7 +351,7 @@ public class TerritoryCommands implements CommandExecutor {
 
         com.truongcm.territorydefense.feature.logistics.NPCBuilder builder = plugin.getBuilderManager().getActiveBuilders().get(playerCore.getCoreId());
         if (builder == null) {
-            player.sendMessage(ChatColor.RED + "Bạn cần thuê Thợ Xây NPC trước khi lưu bản vẽ!");
+            player.sendMessage(ChatColor.RED + "Bạn cần thuê 7Gao trước khi lưu bản vẽ!");
             return;
         }
 

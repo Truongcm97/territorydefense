@@ -144,16 +144,28 @@ public class AllyInviteGui extends CustomHolder {
 
     private void handleInviteClick(PersistentDataContainer pdc, Player player) {
         String targetName = pdc.get(targetKey, PersistentDataType.STRING);
-        if (targetName != null) {
-            Player target = Bukkit.getPlayer(targetName);
-            if (target != null) {
-                plugin.getAllianceManager().sendInvite(player, target);
-                player.sendMessage(ChatColor.GREEN + "[Liên minh] Đã gửi lời mời tới: " + target.getName());
-            } else {
-                player.sendMessage(ChatColor.RED + "[Lỗi] Người chơi không còn online!");
-            }
+        if (targetName == null) return;
+
+        Player target = Bukkit.getPlayer(targetName);
+        if (target == null || !target.isOnline()) {
+            player.sendMessage(ChatColor.RED + "[Lỗi] Người chơi không còn online!");
             player.closeInventory();
+            return;
         }
+
+        // Kiểm tra target đã ở bang khác chưa
+        String targetAlly = plugin.getAllianceManager().getPlayerAlliance(target.getUniqueId());
+        if (targetAlly != null) {
+            player.sendMessage(ChatColor.RED + "[Liên minh] Người chơi này đã ở trong một Liên minh khác!");
+            return;
+        }
+
+        // Thêm trực tiếp (nhất quán với /ally invite command)
+        plugin.getAllianceManager().joinAlliance(alliance.getAllyId(), target.getUniqueId());
+        player.sendMessage(ChatColor.GREEN + "[Liên minh] Đã thêm " + target.getName() + " vào Liên Minh thành công!");
+        target.sendMessage(ChatColor.GREEN + "[Liên minh] Bạn đã được thêm vào Liên Minh: " + ChatColor.YELLOW + alliance.getName() + ChatColor.GREEN + " bởi " + player.getName() + "!");
+        target.playSound(target.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
+        player.closeInventory();
     }
 
     public Alliance getAlliance() {

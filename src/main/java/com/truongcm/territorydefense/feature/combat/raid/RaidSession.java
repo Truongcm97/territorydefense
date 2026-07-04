@@ -14,6 +14,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.persistence.PersistentDataType;
@@ -100,8 +101,9 @@ public class RaidSession implements Listener {
             builder.getLastPreRaidSnapshot().clear();
             Location coreLoc = core.getLocation();
             int radius = plugin.getCoreManager().getCoreRadius(core);
-            int scanHeightBelow = plugin.getConfig().getInt("builder-settings.scan-height-below", 5);
-            int scanHeightAbove = plugin.getConfig().getInt("builder-settings.scan-height-above", 15);
+            int rawBelow = plugin.getConfig().getInt("builder-settings.scan-height-below", 5);
+            int scanHeightBelow = rawBelow < 0 ? (coreLoc.getBlockY() - coreLoc.getWorld().getMinHeight()) : Math.abs(rawBelow);
+            int scanHeightAbove = Math.abs(plugin.getConfig().getInt("builder-settings.scan-height-above", 15));
             
             class LocationDelta {
                 final int dx, dy, dz;
@@ -209,7 +211,7 @@ public class RaidSession implements Listener {
     /**
      * Theo dõi sự kiện quái chết để khấu trừ quân số Wave hiện hành.
      */
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGH)
     public void onRaidMobDeath(EntityDeathEvent event) {
         LivingEntity entity = event.getEntity();
 
@@ -234,11 +236,36 @@ public class RaidSession implements Listener {
             return;
         }
 
+        // Tính Shard reward theo loại quái (gộp từ CoreGameplayListener)
+        int shardAmount = 1;
+        if (entity.hasMetadata("td_elite_boss")) {
+            shardAmount = 25;
+        } else if (entity.getType() == org.bukkit.entity.EntityType.RAVAGER
+                || entity.getType() == org.bukkit.entity.EntityType.EVOKER) {
+            shardAmount = 3;
+        }
+
+        // Tìm core và cộng Shard
+        TerritoryCore core = plugin.getCoreManager().getCoreByLocationRange(entity.getLocation());
+        if (core != null && core.getCoreId().equals(coreId)) {
+            plugin.getCoreManager().addShards(coreId, shardAmount);
+            core.markDirty();
+            entity.getLocation().getWorld().spawnParticle(
+                org.bukkit.Particle.PORTAL, entity.getLocation(), 10, 0.2, 0.2, 0.2, 0.1);
+            entity.getLocation().getWorld().playSound(
+                entity.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.5f, 1.8f);
+        }
+
+        // Ghi nhận mob chết vào campaign và cộng Shard harvest
         ActiveRaidCampaign campaign = activeCampaigns.get(coreId);
         if (campaign != null) {
             campaign.registerMobKill(entity);
+            if (core != null) {
+                campaign.addWaveHarvestedShards(core.getOwnerUUID(), shardAmount);
+            }
         }
     }
+
 
     public void broadcastToAlliance(TerritoryCore core, String message) {
         Player owner = Bukkit.getPlayer(core.getOwnerUUID());

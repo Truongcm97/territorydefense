@@ -98,31 +98,7 @@ public class CoreProtectionListener implements Listener {
     }
 
     private boolean isRaidActive(TerritoryCore core) {
-        if (plugin.getRaidSession() == null || core == null) return false;
-        try {
-            Object activeRaid = plugin.getRaidSession().getClass()
-                    .getMethod("getActiveRaid", TerritoryCore.class)
-                    .invoke(plugin.getRaidSession(), core);
-            if (activeRaid != null) {
-                return (boolean) activeRaid.getClass().getMethod("isRunning").invoke(activeRaid);
-            }
-        } catch (Exception e1) {
-            try {
-                Object activeRaid = plugin.getRaidSession().getClass()
-                        .getMethod("getActiveRaid", java.util.UUID.class)
-                        .invoke(plugin.getRaidSession(), core.getCoreId());
-                if (activeRaid != null) {
-                    return (boolean) activeRaid.getClass().getMethod("isRunning").invoke(activeRaid);
-                }
-            } catch (Exception e2) {
-                try {
-                    return (boolean) plugin.getRaidSession().getClass()
-                            .getMethod("isRaidActive", TerritoryCore.class)
-                            .invoke(plugin.getRaidSession(), core);
-                } catch (Exception ignored) {}
-            }
-        }
-        return false;
+        return plugin.getRaidSession() != null && plugin.getRaidSession().isRaidActive(core);
     }
 
     // =========================================================================
@@ -204,8 +180,7 @@ public class CoreProtectionListener implements Listener {
             // Tăng 10% sát thương từ cờ công thành
             double finalDmg = baseDmg * 1.10;
             double newShield = Math.max(0.0, currentShield - finalDmg);
-            core.setShield(newShield);
-            plugin.getCoreManager().saveAllCores();
+            core.setShield(newShield); // setShield() tự markDirty()
 
             block.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, block.getLocation().add(0.5, 0.5, 0.5), 20, 0.3, 0.3, 0.3, 0.1);
             block.getWorld().playSound(block.getLocation(), Sound.ITEM_SHIELD_BLOCK, 1.0f, 1.2f);
@@ -231,10 +206,26 @@ public class CoreProtectionListener implements Listener {
             return;
         }
 
-        // XỬ LÝ CLICK PHẢI (MỞ GUI)
+        // XỬ LÝ CLICK PHẢI (NẠP THỨC ĂN / CHIẾM ĐÓNG / MỞ GUI)
         if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
-            // MỞ GUI
+            // 1. Điều phối qua SiegeSession xử lý chiếm đóng nếu đang có chiến tranh
+            if (plugin.getSiegeSession() != null) {
+                if (plugin.getSiegeSession().handleCaptureAttempt(player, core, event.getAction())) {
+                    event.setCancelled(true);
+                    return;
+                }
+            }
+
+            // 2. Điều phối qua FEPManager nếu là chủ sở hữu hoặc đồng minh tiếp tế thức ăn
             if (isOwner || isAlly) {
+                if (plugin.getFepManager() != null && handItem != null) {
+                    if (plugin.getFepManager().handleFepFeed(player, core, handItem)) {
+                        event.setCancelled(true);
+                        return;
+                    }
+                }
+
+                // 3. Mở GUI điều điều khiển Lõi
                 event.setCancelled(true);
                 player.openInventory(new com.truongcm.territorydefense.feature.core.ui.CoreGui(plugin, core, com.truongcm.territorydefense.feature.core.ui.CoreGui.CoreTab.LOGISTICS).getInventory());
                 player.playSound(player.getLocation(), Sound.BLOCK_CONDUIT_ACTIVATE, 1.0f, 1.0f);
@@ -242,7 +233,7 @@ public class CoreProtectionListener implements Listener {
             }
 
             if (coreAllyId == null || playerAllyId == null || !coreAllyId.equalsIgnoreCase(playerAllyId)) {
-                if (playerAllyId != null && coreAllyId != null && plugin.getSiegeSession().isAtWar(playerAllyId, coreAllyId)) {
+                if (playerAllyId != null && coreAllyId != null && plugin.getSiegeSession() != null && plugin.getSiegeSession().isAtWar(playerAllyId, coreAllyId)) {
                     event.setCancelled(true);
                     return;
                 }
@@ -566,8 +557,7 @@ public class CoreProtectionListener implements Listener {
         double dmg = event.getFinalDamage();
         double oldShield = core.getShield();
         double newShield = Math.max(0.0, oldShield - dmg);
-        core.setShield(newShield);
-        plugin.getCoreManager().saveAllCores();
+        core.setShield(newShield); // setShield() tự markDirty()
 
         // Triệt tiêu sát thương thực tế
         event.setDamage(0.0);
@@ -619,6 +609,82 @@ public class CoreProtectionListener implements Listener {
         Material sourceMaterial = event.getSource().getType();
         if (sourceMaterial == Material.FIRE || sourceMaterial == Material.SOUL_FIRE) {
             event.setCancelled(true);
+        }
+    }
+
+    // --- LOGIC PHỤ TRỢ & SỰ KIỆN CHO QUÁI VẬT CÔNG THÀNH ---
+
+    private boolean isRaidMob(Entity entity) {
+        if (entity == null) return false;
+        return entity.hasMetadata("td_raid_mob") || 
+               (PDCKeys.RAID_MOB_TAG != null && entity.getPersistentDataContainer().has(PDCKeys.RAID_MOB_TAG, PersistentDataType.BYTE));
+    }
+
+    private void checkAndRemoveOrphanRaidMob(Entity entity) {
+        if (entity == null) return;
+        if (PDCKeys.RAID_MOB_TAG != null && entity.getPersistentDataContainer().has(PDCKeys.RAID_MOB_TAG, PersistentDataType.BYTE)) {
+            String coreIdStr = entity.getPersistentDataContainer().get(PDCKeys.OWNER_CORE_ID, PersistentDataType.STRING);
+            if (coreIdStr != null) {
+                try {
+                    UUID coreId = UUID.fromString(coreIdStr);
+                    // 1. Kiểm tra xem đợt Raid của Lõi này còn hoạt động không
+                    if (plugin.getRaidSession() != null) {
+                        if (!plugin.getRaidSession().activeCampaigns().containsKey(coreId)) {
+                            entity.remove();
+                            return;
+                        }
+                    }
+                    // 2. Kiểm tra xem Lõi có Khiên Hòa Bình đang kích hoạt không
+                    if (plugin.getCoreManager().isUnderPeaceProtection(coreId)) {
+                        entity.remove();
+                        return;
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onRaidMobTarget(org.bukkit.event.entity.EntityTargetLivingEntityEvent event) {
+        Entity entity = event.getEntity();
+        Entity target = event.getTarget();
+
+        if (isRaidMob(entity)) {
+            checkAndRemoveOrphanRaidMob(entity);
+            if (entity.isDead() || !entity.isValid()) return;
+        }
+        if (isRaidMob(target)) {
+            checkAndRemoveOrphanRaidMob(target);
+            if (target == null || target.isDead() || !target.isValid()) return;
+        }
+
+        // Quái công thành không được nhắm mục tiêu lẫn nhau
+        if (isRaidMob(entity) && isRaidMob(target)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onRaidMobFriendlyFire(EntityDamageByEntityEvent event) {
+        Entity victim = event.getEntity();
+        Entity damager = event.getDamager();
+
+        if (damager instanceof Projectile proj) {
+            if (proj.getShooter() instanceof Entity shooter) {
+                damager = shooter;
+            }
+        }
+
+        // Quái công thành không được gây sát thương lẫn nhau
+        if (isRaidMob(victim) && isRaidMob(damager)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onRaidMobDamageCheck(EntityDamageEvent event) {
+        if (isRaidMob(event.getEntity())) {
+            checkAndRemoveOrphanRaidMob(event.getEntity());
         }
     }
 }

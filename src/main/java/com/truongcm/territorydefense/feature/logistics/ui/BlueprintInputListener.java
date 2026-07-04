@@ -19,20 +19,10 @@ public class BlueprintInputListener implements Listener {
 
     private final TerritoryDefense plugin;
 
-    private static final Map<UUID, Integer> pendingSellSlot = new ConcurrentHashMap<>();
-    private static final Map<UUID, Integer> pendingChangePriceSlot = new ConcurrentHashMap<>();
     private static final Map<UUID, Integer> pendingRenameSlot = new ConcurrentHashMap<>();
 
     public BlueprintInputListener(TerritoryDefense plugin) {
         this.plugin = plugin;
-    }
-
-    public static void registerSell(UUID uuid, int slot) {
-        pendingSellSlot.put(uuid, slot);
-    }
-
-    public static void registerChangePrice(UUID uuid, int slot) {
-        pendingChangePriceSlot.put(uuid, slot);
     }
 
     public static void registerRename(UUID uuid, int slot) {
@@ -42,8 +32,6 @@ public class BlueprintInputListener implements Listener {
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
-        pendingSellSlot.remove(uuid);
-        pendingChangePriceSlot.remove(uuid);
         pendingRenameSlot.remove(uuid);
     }
 
@@ -51,68 +39,6 @@ public class BlueprintInputListener implements Listener {
     public void onPlayerChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
-
-        if (pendingSellSlot.containsKey(uuid)) {
-            event.setCancelled(true);
-            int slot = pendingSellSlot.remove(uuid);
-            String message = event.getMessage().trim();
-
-            if (message.equalsIgnoreCase("cancel") || message.equalsIgnoreCase("huy")) {
-                player.sendMessage(ChatColor.YELLOW + "[Cửa Hàng] Đã hủy bỏ việc thiết lập bán bản vẽ.");
-                player.playSound(player.getLocation(), Sound.BLOCK_BARREL_CLOSE, 1.0f, 1.0f);
-                reopenSelectSellGui(player);
-                return;
-            }
-
-            try {
-                double price = Double.parseDouble(message);
-                if (price < 0) {
-                    player.sendMessage(ChatColor.RED + "[Cửa Hàng] Giá bán không được là số âm! Vui lòng thử lại.");
-                    reopenPriceSelectGui(player, slot, 100000.0);
-                    return;
-                }
-
-                TerritoryCore core = getPlayerCore(uuid);
-                if (core != null) {
-                    reopenPriceSelectGui(player, slot, price);
-                }
-            } catch (NumberFormatException e) {
-                player.sendMessage(ChatColor.RED + "[Cửa Hàng] Giá bán nhập vào không hợp lệ!");
-                reopenPriceSelectGui(player, slot, 100000.0);
-            }
-            return;
-        }
-
-        if (pendingChangePriceSlot.containsKey(uuid)) {
-            event.setCancelled(true);
-            int slot = pendingChangePriceSlot.remove(uuid);
-            String message = event.getMessage().trim();
-
-            if (message.equalsIgnoreCase("cancel") || message.equalsIgnoreCase("huy")) {
-                player.sendMessage(ChatColor.YELLOW + "[Cửa Hàng] Đã hủy bỏ đổi giá bán.");
-                player.playSound(player.getLocation(), Sound.BLOCK_BARREL_CLOSE, 1.0f, 1.0f);
-                reopenSelectSellGui(player);
-                return;
-            }
-
-            try {
-                double price = Double.parseDouble(message);
-                if (price < 0) {
-                    player.sendMessage(ChatColor.RED + "[Cửa Hàng] Giá bán không được là số âm! Vui lòng thử lại.");
-                    reopenPriceSelectGui(player, slot, 100000.0);
-                    return;
-                }
-
-                TerritoryCore core = getPlayerCore(uuid);
-                if (core != null) {
-                    reopenPriceSelectGui(player, slot, price);
-                }
-            } catch (NumberFormatException e) {
-                player.sendMessage(ChatColor.RED + "[Cửa Hàng] Giá bán nhập vào không hợp lệ!");
-                reopenPriceSelectGui(player, slot, 100000.0);
-            }
-            return;
-        }
 
         if (pendingRenameSlot.containsKey(uuid)) {
             event.setCancelled(true);
@@ -155,29 +81,11 @@ public class BlueprintInputListener implements Listener {
         return null;
     }
 
-    private void reopenSelectSellGui(Player player) {
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            TerritoryCore core = getPlayerCore(player.getUniqueId());
-            if (core != null) {
-                player.openInventory(new BlueprintSelectSellSlotGui(plugin, core).getInventory());
-            }
-        });
-    }
-
-    private void reopenPriceSelectGui(Player player, int slot, double price) {
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            TerritoryCore core = getPlayerCore(player.getUniqueId());
-            if (core != null) {
-                player.openInventory(new BlueprintPriceSelectGui(plugin, core, slot, price).getInventory());
-            }
-        });
-    }
-
     private void reopenBlueprintListGui(Player player) {
         Bukkit.getScheduler().runTask(plugin, () -> {
             TerritoryCore core = getPlayerCore(player.getUniqueId());
             if (core != null) {
-                player.openInventory(new BlueprintListGui(plugin, core).getInventory());
+                player.openInventory(new com.truongcm.territorydefense.feature.logistics.ui.RebuildConfirmGui(plugin, core, null, "Danh Sách Bản Vẽ", -2, 0, false).getInventory());
             }
         });
     }

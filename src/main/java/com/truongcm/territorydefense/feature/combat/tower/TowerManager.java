@@ -515,29 +515,31 @@ public class TowerManager extends BukkitRunnable implements Listener {
             final File backupFile = new File(playerDir, "towers.yml.bak");
 
             Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-                try {
-                    File parent = tempFile.getParentFile();
-                    if (parent != null && !parent.exists()) {
-                        parent.mkdirs();
-                    }
-                    java.nio.file.Files.writeString(tempFile.toPath(), configString, java.nio.charset.StandardCharsets.UTF_8);
-                    if (tempFile.exists() && tempFile.length() > 0) {
-                        if (finalFile.exists() && finalFile.length() > 0) {
+                synchronized (ownerUUID.toString().intern()) {
+                    try {
+                        File parent = tempFile.getParentFile();
+                        if (parent != null && !parent.exists()) {
+                            parent.mkdirs();
+                        }
+                        java.nio.file.Files.writeString(tempFile.toPath(), configString, java.nio.charset.StandardCharsets.UTF_8);
+                        if (tempFile.exists() && tempFile.length() > 0) {
+                            if (finalFile.exists() && finalFile.length() > 0) {
+                                try {
+                                    java.nio.file.Files.copy(finalFile.toPath(), backupFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                                } catch (IOException ignored) {}
+                            }
                             try {
-                                java.nio.file.Files.copy(finalFile.toPath(), backupFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                            } catch (IOException ignored) {}
+                                java.nio.file.Files.move(tempFile.toPath(), finalFile.toPath(), 
+                                        java.nio.file.StandardCopyOption.REPLACE_EXISTING, 
+                                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                            } catch (IOException e) {
+                                java.nio.file.Files.move(tempFile.toPath(), finalFile.toPath(), 
+                                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            }
                         }
-                        try {
-                            java.nio.file.Files.move(tempFile.toPath(), finalFile.toPath(), 
-                                    java.nio.file.StandardCopyOption.REPLACE_EXISTING, 
-                                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-                        } catch (IOException e) {
-                            java.nio.file.Files.move(tempFile.toPath(), finalFile.toPath(), 
-                                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                        }
+                    } catch (Exception e) {
+                        plugin.getLogger().severe("[TD] Loi khi luu bat dong bo du lieu thap cho " + ownerUUID + ": " + e.getMessage());
                     }
-                } catch (Exception e) {
-                    plugin.getLogger().severe("[TD] Loi khi luu bat dong bo du lieu thap cho " + ownerUUID + ": " + e.getMessage());
                 }
             });
         }

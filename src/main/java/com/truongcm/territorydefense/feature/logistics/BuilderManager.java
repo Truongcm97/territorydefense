@@ -81,7 +81,7 @@ public class BuilderManager implements Listener {
                     core = plugin.getCoreManager().getCoreByLocationRange(villager.getLocation());
                 }
                 if (core != null && core.getCoreId().equals(coreId)) {
-                    player.sendMessage(ChatColor.GOLD + "Đây là Thợ Xây của Lãnh thổ! Bạn có thể quản lý tại giao diện chính của Lõi Lãnh thổ.");
+                    player.sendMessage(ChatColor.GOLD + "Đây là 7Gao của Lãnh thổ! Bạn có thể quản lý tại giao diện chính của Lõi Lãnh thổ.");
                 }
             }
         }
@@ -96,9 +96,12 @@ public class BuilderManager implements Listener {
             TerritoryCore core = plugin.getCoreManager().getAllActiveCores().stream()
                     .filter(c -> c.getCoreId().equals(coreId))
                     .findFirst().orElse(null);
-            if (core != null && core.getRebuildWarehouse().equals(closedInv)) {
-                builder.tryResumeRebuilding();
-                break;
+            if (core != null && closedInv.getHolder() instanceof com.truongcm.territorydefense.feature.logistics.ui.RebuildWarehouseGui) {
+                com.truongcm.territorydefense.feature.logistics.ui.RebuildWarehouseGui gui = (com.truongcm.territorydefense.feature.logistics.ui.RebuildWarehouseGui) closedInv.getHolder();
+                if (gui.getCore().getCoreId().equals(core.getCoreId())) {
+                    builder.tryResumeRebuilding();
+                    break;
+                }
             }
         }
     }

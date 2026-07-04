@@ -137,6 +137,24 @@ public class AllianceManager implements Listener {
     }
 
     /**
+     * GIẢI TÁN TOÀN BỘ LIÊN MINH (DISBAND) — Đuổi tất cả thành viên rồi xóa bang.
+     * @param allyId Mã định danh liên minh cần giải tán
+     */
+    public void disbandAlliance(String allyId) {
+        Alliance alliance = alliances.get(allyId);
+        if (alliance == null) return;
+
+        // Đuổi từng thành viên khỏi map ánh xạ nhanh
+        for (UUID memberUUID : new java.util.ArrayList<>(alliance.getMembers())) {
+            playerAllianceMap.remove(memberUUID);
+        }
+
+        // Xóa liên minh khỏi registry
+        alliances.remove(allyId);
+        saveAlliances();
+    }
+
+    /**
      * LƯU TOÀN BỘ LIÊN MINH XUỐNG CƠ SỞ DỮ LIỆU FILE (alliances.yml)
      */
     public void saveAlliances() {
@@ -163,13 +181,22 @@ public class AllianceManager implements Listener {
         // Serialize to String on the main thread for safety
         final String configString = allianceConfig.saveToString();
 
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+        if (!plugin.isEnabled()) {
+            // Nếu plugin đang disable, ghi file đồng bộ ngay lập tức để tránh lỗi đăng ký task
             try {
                 java.nio.file.Files.writeString(allianceFile.toPath(), configString, java.nio.charset.StandardCharsets.UTF_8);
             } catch (IOException e) {
-                plugin.getLogger().severe("[TD] Lỗi nghiêm trọng không thể ghi dữ liệu Liên Minh vào alliances.yml: " + e.getMessage());
+                plugin.getLogger().severe("[TD] Lỗi nghiêm trọng không thể ghi dữ liệu Liên Minh (Đồng bộ) vào alliances.yml: " + e.getMessage());
             }
-        });
+        } else {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                try {
+                    java.nio.file.Files.writeString(allianceFile.toPath(), configString, java.nio.charset.StandardCharsets.UTF_8);
+                } catch (IOException e) {
+                    plugin.getLogger().severe("[TD] Lỗi nghiêm trọng không thể ghi dữ liệu Liên Minh vào alliances.yml: " + e.getMessage());
+                }
+            });
+        }
     }
 
     /**

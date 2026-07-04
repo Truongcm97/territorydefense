@@ -46,4 +46,6 @@ public abstract class CustomHolder implements InventoryHolder {
         }
         return item;
     }
+
+    public void onClose(Player player) {}
 }
