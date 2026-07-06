@@ -97,11 +97,33 @@ public class FEPManager implements Listener {
         double maxChargeRatePerSec = plugin.getConfig().getDouble("fep-settings.shield-generation.max-recharge-rate-per-second", 100.0);
 
         for (TerritoryCore core : plugin.getCoreManager().getAllActiveCores()) {
-            // 0. Tự động chuyển hóa thực phẩm từ Kho Thực Phẩm Lõi (9 Ô) thành FEP cho đến khi đầy bình chứa
             double capacity = core.getMaxFepCapacity();
-            double fepVal = core.getFep();
-            if (fepVal < capacity) {
-                double missingFep = capacity - fepVal;
+
+            // 0. Thực hiện tiêu hao FEP cơ bản TRƯỚC — để tính toán mức thiếu hụt thực tế
+            double currentFep = core.getFep();
+            double newFep = Math.max(0.0, currentFep - decayPerSecond);
+            core.setFep(newFep);
+
+            // 1. Kiểm tra trạng thái SHUTDOWN MODE nếu FEP cạn kiệt về 0
+            if (newFep <= 0.0) {
+                if (core.getShield() > 0.0) {
+                    core.setShield(0.0); // Giáp ảo lập tức vỡ vụn
+                    triggerShutdownAlert(core);
+                    plugin.getCoreManager().registerCore(core.getLocation(), core);
+                }
+                continue; // Không FEP -> Không sạc giáp, tháp ngắt điện
+            }
+
+            // Đã có FEP -> Reset cờ cảnh báo sập nguồn
+            coreShutdownAlerted.put(core.getCoreId(), false);
+
+            // 2. Tự động chuyển hóa thực phẩm → FEP.
+            //    Chỉ kích hoạt khi FEP xuống dưới 95% capacity để tránh tiêu thụ food
+            //    chỉ vì mức decay nhỏ mỗi giây (≈0.0005 FEP) gây lãng phí 1 item/giây.
+            double fepAfterDecay = core.getFep();
+            double convertThreshold = plugin.getConfig().getDouble("fep-settings.auto-convert-threshold-percent", 95.0);
+            if (fepAfterDecay < capacity * (convertThreshold / 100.0)) {
+                double missingFep = capacity - fepAfterDecay;
                 Inventory warehouse = core.getFoodWarehouse();
                 boolean changed = false;
                 for (int i = 0; i < warehouse.getSize(); i++) {
@@ -144,24 +166,6 @@ public class FEPManager implements Listener {
                 }
             }
 
-            // 1. Thực hiện tiêu túc năng lượng FEP cơ bản duy trì hệ thống
-            double currentFep = core.getFep();
-            double newFep = Math.max(0.0, currentFep - decayPerSecond);
-            core.setFep(newFep);
-
-            // 2. Kiểm tra trạng thái SHUTDOWN MODE nếu FEP cạn kiệt về 0
-            if (newFep <= 0.0) {
-                if (core.getShield() > 0.0) {
-                    core.setShield(0.0); // Giáp ảo lập tức vỡ vụn
-                    triggerShutdownAlert(core);
-                    plugin.getCoreManager().registerCore(core.getLocation(), core); // Lưu ngay trạng thái sập nguồn
-                }
-                continue; // Không FEP -> Không sạc giáp, tháp ngắt điện
-            }
-
-            // Đã có FEP -> Reset cờ cảnh báo sập nguồn
-            coreShutdownAlerted.put(core.getCoreId(), false);
-
             // 3. Cơ chế sạc sụt giảm của Khiên ảo (Shield Recharge Loop)
             double currentShield = core.getShield();
             double maxShield = core.getMaxShieldCapacity();
@@ -187,12 +191,13 @@ public class FEPManager implements Listener {
                 double targetRecharge = Math.min(shieldDeficit, currentMaxRechargeRate);
 
                 // Tính toán lượng FEP cần tiêu thụ để sạc (1 FEP = 10 Shield HP)
+                double currentFepForShield = core.getFep();
                 double fepNeeded = targetRecharge / chargeRatio;
-                double fepToConsume = Math.min(newFep, fepNeeded);
+                double fepToConsume = Math.min(currentFepForShield, fepNeeded);
 
                 if (fepToConsume > 0.0) {
                     double shieldGained = fepToConsume * chargeRatio;
-                    core.setFep(newFep - fepToConsume);
+                    core.setFep(currentFepForShield - fepToConsume);
                     core.setShield(currentShield + shieldGained);
                 }
             }

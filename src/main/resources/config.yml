@@ -67,6 +67,13 @@ fep-settings:
     ratio: 10.0                     # 1 FEP = 10 Giáp ảo
     max-recharge-rate-per-second: 100.0 # Tránh hồi máu quá nhanh bất tử trong PvP
 
+  # Ngưỡng % FEP tối thiểu để kích hoạt tự động chuyển hóa thực phẩm → FEP.
+  # Thực phẩm trong Kho Thực Phẩm Lõi chỉ bị tiêu khi FEP xuống dưới mức này.
+  # Mặc định 95.0 = chỉ convert khi FEP < 95% capacity, tránh tiêu 1 item/giây
+  # chỉ để bù mức decay rất nhỏ (~0.0005 FEP/giây với rate 2.0 FEP/giờ).
+  auto-convert-threshold-percent: 95.0
+
+
 # ------------------------------------------------------------------------------
 # 3. NPC FARMER LOGISTICS (DÂN SỰ) - Tối ưu chống lag Ticks
 # ------------------------------------------------------------------------------
